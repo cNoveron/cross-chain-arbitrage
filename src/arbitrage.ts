@@ -10,6 +10,95 @@ import {
   getGasCostInUSD
 } from './getters';
 
+// Paper trading balance tracking
+export interface TokenBalance {
+  usdc: number;
+  usdt: number;
+  timestamp: number;
+}
+
+export interface PaperTrade {
+  id: string;
+  sourceChain: string;
+  targetChain: string;
+  sourcePrice: number;
+  targetPrice: number;
+  amount: number;
+  profit: number;
+  gasCost: number;
+  netProfit: number;
+  timestamp: number;
+  status: 'executed' | 'failed' | 'pending';
+}
+
+// Paper trading state
+export const paperBalances: Record<string, TokenBalance> = {
+  avalanche: { usdc: 10000, usdt: 0, timestamp: Date.now() }, // Start with 10k USDC
+  sonic: { usdc: 10000, usdt: 0, timestamp: Date.now() },     // Start with 10k USDC
+};
+
+export const paperTrades: PaperTrade[] = [];
+
+// Paper trading functions
+export function getPaperBalance(chainName: string): TokenBalance {
+  return paperBalances[chainName] || { usdc: 0, usdt: 0, timestamp: Date.now() };
+}
+
+export function updatePaperBalance(chainName: string, usdc: number, usdt: number): void {
+  paperBalances[chainName] = {
+    usdc,
+    usdt,
+    timestamp: Date.now()
+  };
+
+  log(`Paper balance updated for ${chainName}: USDC=${usdc.toFixed(2)}, USDT=${usdt.toFixed(2)}`);
+}
+
+export function addPaperTrade(trade: Omit<PaperTrade, 'id' | 'timestamp'>): void {
+  const paperTrade: PaperTrade = {
+    ...trade,
+    id: `trade_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    timestamp: Date.now()
+  };
+
+  paperTrades.push(paperTrade);
+  log(`Paper trade recorded: ${paperTrade.id} - ${trade.sourceChain} → ${trade.targetChain} - Profit: $${trade.netProfit.toFixed(4)}`);
+}
+
+export function calculateTotalPaperValue(): number {
+  let totalValue = 0;
+
+  for (const [chainName, balance] of Object.entries(paperBalances)) {
+    const usdcValue = balance.usdc * 1.0; // USDC = $1
+    const usdtValue = balance.usdt * 1.0; // USDT = $1
+    totalValue += usdcValue + usdtValue;
+  }
+
+  return totalValue;
+}
+
+export function getPaperTradingStats(): {
+  totalTrades: number;
+  profitableTrades: number;
+  totalProfit: number;
+  totalValue: number;
+  winRate: number;
+} {
+  const totalTrades = paperTrades.length;
+  const profitableTrades = paperTrades.filter(trade => trade.netProfit > 0).length;
+  const totalProfit = paperTrades.reduce((sum, trade) => sum + trade.netProfit, 0);
+  const totalValue = calculateTotalPaperValue();
+  const winRate = totalTrades > 0 ? (profitableTrades / totalTrades) * 100 : 0;
+
+  return {
+    totalTrades,
+    profitableTrades,
+    totalProfit,
+    totalValue,
+    winRate
+  };
+}
+
 // Arbitrage-specific functions
 export async function checkPriceDifference(
   client1: PublicClient,
@@ -48,6 +137,72 @@ export async function executeArbitrage(
 ): Promise<void> {
   try {
     log(`Executing arbitrage: Buy on ${sourceChain} at ${sourcePrice}, sell on ${targetChain} at ${targetPrice}`);
+
+    // Paper trading logic
+    const tradeAmount = 1000; // $1000 USDC per trade
+    const sourceBalance = getPaperBalance(sourceChain);
+    const targetBalance = getPaperBalance(targetChain);
+
+    // Check if we have enough USDC to execute the trade
+    if (sourceBalance.usdc < tradeAmount) {
+      log(`Insufficient USDC on ${sourceChain} for paper trade. Available: ${sourceBalance.usdc}, Required: ${tradeAmount}`, 'warn');
+      return;
+    }
+
+    // Calculate trade details
+    const usdtReceived = tradeAmount * sourcePrice; // USDT received from buying
+    const usdcReceived = usdtReceived / targetPrice; // USDC received from selling
+
+    // Calculate profits and costs
+    const grossProfit = usdcReceived - tradeAmount;
+    const gasCostUSD = getGasCostInUSD(sourceChain) + getGasCostInUSD(targetChain);
+    const netProfit = grossProfit - gasCostUSD;
+
+    // Update paper balances
+    const newSourceBalance = {
+      usdc: sourceBalance.usdc - tradeAmount,
+      usdt: sourceBalance.usdt + usdtReceived,
+      timestamp: Date.now()
+    };
+
+    const newTargetBalance = {
+      usdc: targetBalance.usdc + usdcReceived,
+      usdt: targetBalance.usdt,
+      timestamp: Date.now()
+    };
+
+    // Record the paper trade
+    addPaperTrade({
+      sourceChain,
+      targetChain,
+      sourcePrice,
+      targetPrice,
+      amount: tradeAmount,
+      profit: grossProfit,
+      gasCost: gasCostUSD,
+      netProfit,
+      status: netProfit > 0 ? 'executed' : 'failed'
+    });
+
+    // Update balances if trade is profitable
+    if (netProfit > 0) {
+      updatePaperBalance(sourceChain, newSourceBalance.usdc, newSourceBalance.usdt);
+      updatePaperBalance(targetChain, newTargetBalance.usdc, newTargetBalance.usdt);
+
+      // Log trade summary
+      const stats = getPaperTradingStats();
+      log(`📊 Paper Trade Summary:`);
+      log(`  Trade Amount: $${tradeAmount}`);
+      log(`  Gross Profit: $${grossProfit.toFixed(4)}`);
+      log(`  Gas Cost: $${gasCostUSD.toFixed(4)}`);
+      log(`  Net Profit: $${netProfit.toFixed(4)}`);
+      log(`  Total Portfolio Value: $${stats.totalValue.toFixed(2)}`);
+      log(`  Total Profit: $${stats.totalProfit.toFixed(4)}`);
+      log(`  Win Rate: ${stats.winRate.toFixed(1)}%`);
+
+    } else {
+      log(`Paper trade not executed - unprofitable after gas costs (Net: $${netProfit.toFixed(4)})`, 'warn');
+    }
 
     // This is where you would implement the actual arbitrage execution
     // 1. Calculate optimal amounts
