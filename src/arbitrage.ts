@@ -5,6 +5,14 @@ import { log, withRetry, sleep } from './utils';
 // Price storage for each chain
 export const lastPrices: Record<string, { usdc: number; usdt: number; timestamp: number }> = {};
 
+// Gas cost storage for each chain
+export const gasCosts: Record<string, {
+  gasPrice: bigint;
+  estimatedGas: bigint;
+  totalCost: bigint;
+  timestamp: number
+}> = {};
+
 // Main monitoring functions
 export async function getBlockNumber(client: PublicClient, chainName: string): Promise<void> {
   try {
@@ -31,6 +39,70 @@ export async function getBalance(client: PublicClient, chainName: string, addres
   } catch (error) {
     log(`Failed to get ${chainName} balance: ${error}`, 'error');
   }
+}
+
+// Gas cost estimation functions
+export async function estimateSwapGasCost(
+  client: PublicClient,
+  chainName: string
+): Promise<void> {
+  try {
+    // Get current gas price
+    const gasPrice = await withRetry(() => client.getGasPrice());
+
+    // Estimate gas for a swap transaction
+    // These are typical gas estimates for swap transactions on different chains
+    const estimatedGasLimits: Record<string, bigint> = {
+      avalanche: 300000n, // ~300k gas for Avalanche swaps
+      sonic: 250000n,     // ~250k gas for Sonic swaps
+    };
+
+    const estimatedGas = estimatedGasLimits[chainName] || 300000n;
+    const totalCost = gasPrice * estimatedGas;
+
+    // Store the gas cost information
+    gasCosts[chainName] = {
+      gasPrice,
+      estimatedGas,
+      totalCost,
+      timestamp: Date.now()
+    };
+
+    log(`${chainName} gas cost: ${gasPrice} wei/gas × ${estimatedGas} gas = ${totalCost} wei (${Number(totalCost) / 1e18} ETH)`);
+
+  } catch (error) {
+    log(`Failed to estimate ${chainName} swap gas cost: ${error}`, 'error');
+  }
+}
+
+// Calculate total gas cost for arbitrage (both chains)
+export function calculateTotalArbitrageGasCost(): bigint {
+  const avalancheCost = gasCosts['avalanche']?.totalCost || 0n;
+  const sonicCost = gasCosts['sonic']?.totalCost || 0n;
+
+  const totalCost = avalancheCost + sonicCost;
+
+  log(`Total arbitrage gas cost: ${avalancheCost} + ${sonicCost} = ${totalCost} wei (${Number(totalCost) / 1e18} ETH)`);
+
+  return totalCost;
+}
+
+// Get gas cost in USD (approximate)
+export function getGasCostInUSD(chainName: string): number {
+  const gasCost = gasCosts[chainName];
+  if (!gasCost) return 0;
+
+  // Approximate ETH prices (you might want to fetch these dynamically)
+  const ethPrices: Record<string, number> = {
+    avalanche: 25.0, // AVAX price in USD
+    sonic: 1.0,      // Assuming Sonic uses ETH or similar pricing
+  };
+
+  const ethPrice = ethPrices[chainName] || 1.0;
+  const costInEth = Number(gasCost.totalCost) / 1e18;
+  const costInUSD = costInEth * ethPrice;
+
+  return costInUSD;
 }
 
 // Price monitoring functions for CL pools
@@ -118,6 +190,13 @@ export async function monitorPrices(): Promise<void> {
       // Monitor Shadow pool on Sonic
       await getShadowPoolPrice(clients.sonic, 'sonic', SHADOW_POOL_SONIC);
 
+      // Estimate gas costs for both chains
+      await estimateSwapGasCost(clients.avalanche, 'avalanche');
+      await estimateSwapGasCost(clients.sonic, 'sonic');
+
+      // Calculate total arbitrage gas cost
+      const totalGasCost = calculateTotalArbitrageGasCost();
+
       // Check for arbitrage opportunities
       await checkArbitrageOpportunities();
 
@@ -146,6 +225,13 @@ async function checkArbitrageOpportunities(): Promise<void> {
 
     log(`Price comparison: Avalanche USDT=${avalanchePrice.usdt.toFixed(6)}, Sonic USDT=${sonicPrice.usdt.toFixed(6)}, Diff=${percentageDiff.toFixed(4)}%`);
 
+    // Calculate gas costs in USD
+    const avalancheGasUSD = getGasCostInUSD('avalanche');
+    const sonicGasUSD = getGasCostInUSD('sonic');
+    const totalGasUSD = avalancheGasUSD + sonicGasUSD;
+
+    log(`Gas costs: Avalanche $${avalancheGasUSD.toFixed(4)}, Sonic $${sonicGasUSD.toFixed(4)}, Total $${totalGasUSD.toFixed(4)}`);
+
     // Arbitrage threshold (adjust as needed)
     const ARBITRAGE_THRESHOLD = 0.1; // 0.1%
 
@@ -158,7 +244,18 @@ async function checkArbitrageOpportunities(): Promise<void> {
       const buyPrice = Math.min(avalanchePrice.usdt, sonicPrice.usdt);
       const sellPrice = Math.max(avalanchePrice.usdt, sonicPrice.usdt);
 
-      await executeArbitrage(buyChain, sellChain, 'USDC/USDT', buyPrice, sellPrice);
+      // Calculate potential profit (simplified)
+      const tradeAmount = 1000; // $1000 USDC
+      const profitUSD = (sellPrice - buyPrice) * tradeAmount;
+      const netProfitUSD = profitUSD - totalGasUSD;
+
+      log(`Potential profit: $${profitUSD.toFixed(4)} - $${totalGasUSD.toFixed(4)} gas = $${netProfitUSD.toFixed(4)} net`);
+
+      if (netProfitUSD > 0) {
+        await executeArbitrage(buyChain, sellChain, 'USDC/USDT', buyPrice, sellPrice);
+      } else {
+        log(`Arbitrage not profitable after gas costs`, 'warn');
+      }
     }
 
   } catch (error) {
