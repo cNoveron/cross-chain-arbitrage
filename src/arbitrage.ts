@@ -345,7 +345,7 @@ export async function setupWebSocketMonitoring(): Promise<void> {
       // Watch for new blocks
       const unwatch = await wsClient.watchBlocks({
         onBlock: (block) => {
-          log(`${chainName} new block: ${block.number}`);
+          //log(`${chainName} new block: ${block.number}`);
         },
         onError: (error) => {
           log(`${chainName} WebSocket error: ${error}`, 'error');
