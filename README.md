@@ -1,10 +1,10 @@
 # Cross-Chain Arbitrage - Continuous Viem Script
 
-A TypeScript boilerplate script using viem that runs continuously to monitor multiple blockchain networks.
+A TypeScript boilerplate script using viem that runs continuously to monitor Avalanche and Sonic blockchain networks.
 
 ## Features
 
-- **Multi-chain monitoring**: Supports Ethereum Mainnet, Polygon, and Arbitrum
+- **Multi-chain monitoring**: Supports Avalanche and Sonic mainnet networks
 - **Real-time data**: WebSocket connections for live block monitoring
 - **Robust error handling**: Retry mechanisms and graceful error recovery
 - **Configurable polling**: Adjustable intervals for different monitoring tasks
@@ -31,31 +31,33 @@ Before running the script, you need to configure your RPC endpoints. Edit `src/i
 ```typescript
 const CONFIG = {
   // Replace with your actual API keys
-  MAINNET_RPC: 'https://eth-mainnet.g.alchemy.com/v2/{process.env.ALCHEMY_API_KEY}-',
-  POLYGON_RPC: 'https://polygon-mainnet.g.alchemy.com/v2/{process.env.ALCHEMY_API_KEY}-',
-  ARBITRUM_RPC: 'https://arb-mainnet.g.alchemy.com/v2/{process.env.ALCHEMY_API_KEY}-',
+  AVALANCHE_RPC: `https://avalanche-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
+  SONIC_RPC: `https://sonic-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
 
   // WebSocket endpoints
-  MAINNET_WS: 'wss://eth-mainnet.g.alchemy.com/v2/{process.env.ALCHEMY_API_KEY}-',
-  POLYGON_WS: 'wss://polygon-mainnet.g.alchemy.com/v2/{process.env.ALCHEMY_API_KEY}-',
-  ARBITRUM_WS: 'wss://arb-mainnet.g.alchemy.com/v2/{process.env.ALCHEMY_API_KEY}-',
+  AVALANCHE_WS: `wss://avalanche-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
+  SONIC_WS: `wss://sonic-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
   // ... rest of config
 };
+```
+
+### Environment Variables
+
+Create a `.env` file in the root directory:
+
+```bash
+ALCHEMY_API_KEY=your_alchemy_api_key_here
 ```
 
 ### Free RPC Providers
 
 You can use these free RPC providers for testing:
 
-- **Ethereum Mainnet**:
-  - Infura: `https://mainnet.infura.io/v3/YOUR_PROJECT_ID`
-  - Alchemy: `https://eth-mainnet.g.alchemy.com/v2/{process.env.ALCHEMY_API_KEY}-`
-- **Polygon**:
-  - Infura: `https://polygon-mainnet.infura.io/v3/YOUR_PROJECT_ID`
-  - Alchemy: `https://polygon-mainnet.g.alchemy.com/v2/{process.env.ALCHEMY_API_KEY}-`
-- **Arbitrum**:
-  - Infura: `https://arbitrum-mainnet.infura.io/v3/YOUR_PROJECT_ID`
-  - Alchemy: `https://arb-mainnet.g.alchemy.com/v2/{process.env.ALCHEMY_API_KEY}-`
+- **Avalanche**:
+  - Alchemy: `https://avalanche-mainnet.g.alchemy.com/v2/YOUR_API_KEY`
+  - Public RPC: `https://api.avax.network/ext/bc/C/rpc`
+- **Sonic**:
+  - Alchemy: `https://sonic-mainnet.g.alchemy.com/v2/YOUR_API_KEY`
 
 ## Usage
 
@@ -79,7 +81,7 @@ npm start
 
 The script continuously monitors:
 
-1. **Block Numbers**: Latest block numbers from all configured chains
+1. **Block Numbers**: Latest block numbers from Avalanche and Sonic networks
 2. **Gas Prices**: Current gas prices for transaction cost monitoring
 3. **Real-time Blocks**: WebSocket connections for instant block notifications
 4. **Address Balances**: (Commented out) Monitor specific addresses
@@ -89,16 +91,13 @@ The script continuously monitors:
 ```
 [2024-01-15T10:30:00.000Z] [INFO] Starting viem continuous monitoring script...
 [2024-01-15T10:30:00.000Z] [INFO] Setting up WebSocket monitoring...
-[2024-01-15T10:30:00.000Z] [INFO] mainnet WebSocket monitoring started
-[2024-01-15T10:30:00.000Z] [INFO] polygon WebSocket monitoring started
-[2024-01-15T10:30:00.000Z] [INFO] arbitrum WebSocket monitoring started
+[2024-01-15T10:30:00.000Z] [INFO] avalanche WebSocket monitoring started
+[2024-01-15T10:30:00.000Z] [INFO] sonic WebSocket monitoring started
 [2024-01-15T10:30:00.000Z] [INFO] Starting chain monitoring...
-[2024-01-15T10:30:00.000Z] [INFO] mainnet block number: 19000000
-[2024-01-15T10:30:00.000Z] [INFO] mainnet gas price: 20000000000 wei
-[2024-01-15T10:30:00.000Z] [INFO] polygon block number: 50000000
-[2024-01-15T10:30:00.000Z] [INFO] polygon gas price: 30000000000 wei
-[2024-01-15T10:30:00.000Z] [INFO] arbitrum block number: 15000000
-[2024-01-15T10:30:00.000Z] [INFO] arbitrum gas price: 1000000000 wei
+[2024-01-15T10:30:00.000Z] [INFO] avalanche block number: 45000000
+[2024-01-15T10:30:00.000Z] [INFO] avalanche gas price: 25000000000 wei
+[2024-01-15T10:30:00.000Z] [INFO] sonic block number: 15000000
+[2024-01-15T10:30:00.000Z] [INFO] sonic gas price: 15000000000 wei
 [2024-01-15T10:30:00.000Z] [INFO] Completed monitoring cycle
 ```
 
@@ -109,13 +108,13 @@ The script continuously monitors:
 To add a new chain, import it from viem/chains and add it to the clients:
 
 ```typescript
-import { optimism } from 'viem/chains';
+import { fantom } from 'viem/chains';
 
 const clients = {
   // ... existing chains
-  optimism: createPublicClient({
-    chain: optimism,
-    transport: http('YOUR_OPTIMISM_RPC'),
+  fantom: createPublicClient({
+    chain: fantom,
+    transport: http('YOUR_FANTOM_RPC'),
   }),
 };
 ```

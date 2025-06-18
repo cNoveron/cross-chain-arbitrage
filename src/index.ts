@@ -1,17 +1,19 @@
+import { config } from 'dotenv';
 import { createPublicClient, http, webSocket, PublicClient } from 'viem';
-import { mainnet, polygon, arbitrum } from 'viem/chains';
+import { avalanche } from 'viem/chains';
+
+// Load environment variables
+config();
 
 // Configuration
 const CONFIG = {
   // RPC endpoints - replace with your own if needed
-  MAINNET_RPC: `https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
-  POLYGON_RPC: `https://polygon-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
-  ARBITRUM_RPC: `https://arb-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
+  AVALANCHE_RPC: `https://avalanche-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
+  SONIC_RPC: `https://sonic-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
 
   // WebSocket endpoints for real-time data
-  MAINNET_WS: `wss://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
-  POLYGON_WS: `wss://polygon-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
-  ARBITRUM_WS: `wss://arb-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
+  AVALANCHE_WS: `wss://avalanche-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
+  SONIC_WS: `wss://sonic-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
 
   // Polling intervals
   BLOCK_POLLING_INTERVAL: 1000, // 1 second
@@ -24,33 +26,51 @@ const CONFIG = {
 
 // Create viem clients for different chains
 const clients: Record<string, PublicClient> = {
-  mainnet: createPublicClient({
-    chain: mainnet,
-    transport: http(CONFIG.MAINNET_RPC),
+  avalanche: createPublicClient({
+    chain: avalanche,
+    transport: http(CONFIG.AVALANCHE_RPC),
   }),
-  polygon: createPublicClient({
-    chain: polygon,
-    transport: http(CONFIG.POLYGON_RPC),
-  }),
-  arbitrum: createPublicClient({
-    chain: arbitrum,
-    transport: http(CONFIG.ARBITRUM_RPC),
+  sonic: createPublicClient({
+    chain: {
+      id: 1001, // Sonic mainnet chain ID
+      name: 'Sonic',
+      network: 'sonic',
+      nativeCurrency: {
+        decimals: 18,
+        name: 'Ether',
+        symbol: 'ETH',
+      },
+      rpcUrls: {
+        default: { http: [CONFIG.SONIC_RPC] },
+        public: { http: [CONFIG.SONIC_RPC] },
+      },
+    },
+    transport: http(CONFIG.SONIC_RPC),
   }),
 };
 
 // WebSocket clients for real-time data
 const wsClients: Record<string, PublicClient> = {
-  mainnet: createPublicClient({
-    chain: mainnet,
-    transport: webSocket(CONFIG.MAINNET_WS),
+  avalanche: createPublicClient({
+    chain: avalanche,
+    transport: webSocket(CONFIG.AVALANCHE_WS),
   }),
-  polygon: createPublicClient({
-    chain: polygon,
-    transport: webSocket(CONFIG.POLYGON_WS),
-  }),
-  arbitrum: createPublicClient({
-    chain: arbitrum,
-    transport: webSocket(CONFIG.ARBITRUM_WS),
+  sonic: createPublicClient({
+    chain: {
+      id: 1001, // Sonic mainnet chain ID
+      name: 'Sonic',
+      network: 'sonic',
+      nativeCurrency: {
+        decimals: 18,
+        name: 'Ether',
+        symbol: 'ETH',
+      },
+      rpcUrls: {
+        default: { http: [CONFIG.SONIC_RPC] },
+        public: { http: [CONFIG.SONIC_RPC] },
+      },
+    },
+    transport: webSocket(CONFIG.SONIC_WS),
   }),
 };
 
