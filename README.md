@@ -31,11 +31,11 @@ Before running the script, you need to configure your RPC endpoints. Edit `src/i
 ```typescript
 const CONFIG = {
   // Replace with your actual API keys
-  AVALANCHE_RPC: `https://avalanche-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
+  AVALANCHE_RPC: `https://avax-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
   SONIC_RPC: `https://sonic-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
 
   // WebSocket endpoints
-  AVALANCHE_WS: `wss://avalanche-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
+  AVALANCHE_WS: `wss://avax-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
   SONIC_WS: `wss://sonic-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
   // ... rest of config
 };
@@ -54,7 +54,7 @@ ALCHEMY_API_KEY=your_alchemy_api_key_here
 You can use these free RPC providers for testing:
 
 - **Avalanche**:
-  - Alchemy: `https://avalanche-mainnet.g.alchemy.com/v2/YOUR_API_KEY`
+  - Alchemy: `https://avax-mainnet.g.alchemy.com/v2/YOUR_API_KEY`
   - Public RPC: `https://api.avax.network/ext/bc/C/rpc`
 - **Sonic**:
   - Alchemy: `https://sonic-mainnet.g.alchemy.com/v2/YOUR_API_KEY`

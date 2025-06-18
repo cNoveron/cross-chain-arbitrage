@@ -4,11 +4,11 @@ import { avalanche } from 'viem/chains';
 // Configuration
 const CONFIG = {
   // RPC endpoints - replace with your own if needed
-  AVALANCHE_RPC: `https://avalanche-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
+  AVALANCHE_RPC: `https://avax-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
   SONIC_RPC: `https://sonic-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
 
   // WebSocket endpoints for real-time data
-  AVALANCHE_WS: `wss://avalanche-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
+  AVALANCHE_WS: `wss://avax-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
   SONIC_WS: `wss://sonic-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
 
   // Polling intervals
