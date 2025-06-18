@@ -158,34 +158,35 @@ export async function executeArbitrage(
     const gasCostUSD = getGasCostInUSD(sourceChain) + getGasCostInUSD(targetChain);
     const netProfit = grossProfit - gasCostUSD;
 
-    // Update paper balances
-    const newSourceBalance = {
-      usdc: sourceBalance.usdc - tradeAmount,
-      usdt: sourceBalance.usdt + usdtReceived,
-      timestamp: Date.now()
-    };
-
-    const newTargetBalance = {
-      usdc: targetBalance.usdc + usdcReceived,
-      usdt: targetBalance.usdt,
-      timestamp: Date.now()
-    };
-
-    // Record the paper trade
-    addPaperTrade({
-      sourceChain,
-      targetChain,
-      sourcePrice,
-      targetPrice,
-      amount: tradeAmount,
-      profit: grossProfit,
-      gasCost: gasCostUSD,
-      netProfit,
-      status: netProfit > 0 ? 'executed' : 'failed'
-    });
-
-    // Update balances if trade is profitable
+    // Only execute and record the trade if it's profitable
     if (netProfit > 0) {
+      // Update paper balances
+      const newSourceBalance = {
+        usdc: sourceBalance.usdc - tradeAmount,
+        usdt: sourceBalance.usdt + usdtReceived,
+        timestamp: Date.now()
+      };
+
+      const newTargetBalance = {
+        usdc: targetBalance.usdc + usdcReceived,
+        usdt: targetBalance.usdt,
+        timestamp: Date.now()
+      };
+
+      // Record the paper trade
+      addPaperTrade({
+        sourceChain,
+        targetChain,
+        sourcePrice,
+        targetPrice,
+        amount: tradeAmount,
+        profit: grossProfit,
+        gasCost: gasCostUSD,
+        netProfit,
+        status: 'executed'
+      });
+
+      // Update balances
       updatePaperBalance(sourceChain, newSourceBalance.usdc, newSourceBalance.usdt);
       updatePaperBalance(targetChain, newTargetBalance.usdc, newTargetBalance.usdt);
 
@@ -249,17 +250,30 @@ async function checkArbitrageOpportunities(): Promise<void> {
       const buyPrice = Math.min(avalanchePrice.usdt, sonicPrice.usdt);
       const sellPrice = Math.max(avalanchePrice.usdt, sonicPrice.usdt);
 
-      // Calculate potential profit (simplified)
-      const tradeAmount = 1000; // $1000 USDC
-      const profitUSD = (sellPrice - buyPrice) * tradeAmount;
-      const netProfitUSD = profitUSD - totalGasUSD;
+      // Use the same logic as executeArbitrage to calculate profitability
+      const tradeAmount = 1000; // $1000 USDC per trade
+      const sourceBalance = getPaperBalance(buyChain);
 
-      log(`Potential profit: $${profitUSD.toFixed(4)} - $${totalGasUSD.toFixed(4)} gas = $${netProfitUSD.toFixed(4)} net`);
+      // Check if we have enough USDC to execute the trade
+      if (sourceBalance.usdc < tradeAmount) {
+        log(`Insufficient USDC on ${buyChain} for arbitrage. Available: ${sourceBalance.usdc}, Required: ${tradeAmount}`, 'warn');
+        return;
+      }
 
-      if (netProfitUSD > 0) {
+      // Calculate trade details using the same logic as executeArbitrage
+      const usdtReceived = tradeAmount * buyPrice; // USDT received from buying
+      const usdcReceived = usdtReceived / sellPrice; // USDC received from selling
+
+      // Calculate profits and costs
+      const grossProfit = usdcReceived - tradeAmount;
+      const netProfit = grossProfit - totalGasUSD;
+
+      log(`Potential profit: $${grossProfit.toFixed(4)} - $${totalGasUSD.toFixed(4)} gas = $${netProfit.toFixed(4)} net`);
+
+      if (netProfit > 0) {
         await executeArbitrage(buyChain, sellChain, 'USDC/USDT', buyPrice, sellPrice);
       } else {
-        log(`Arbitrage not profitable after gas costs`, 'warn');
+        log(`Arbitrage not profitable after gas costs (Net: $${netProfit.toFixed(4)})`, 'warn');
       }
     }
 
