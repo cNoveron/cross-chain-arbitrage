@@ -1,6 +1,6 @@
 import { config } from 'dotenv';
 import { log, setupGracefulShutdown } from './utils';
-import { monitorChains, setupWebSocketMonitoring } from './arbitrage';
+import { monitorChains, setupWebSocketMonitoring, monitorPrices } from './arbitrage';
 
 // Load environment variables
 config();
@@ -16,8 +16,11 @@ async function main(): Promise<void> {
     // Start WebSocket monitoring
     await setupWebSocketMonitoring();
 
-    // Start the main monitoring loop
-    await monitorChains();
+    // Start both monitoring loops in parallel
+    await Promise.all([
+      // monitorChains(),
+      monitorPrices()
+    ]);
 
   } catch (error) {
     log(`Fatal error: ${error}`, 'error');
@@ -33,4 +36,4 @@ if (require.main === module) {
   });
 }
 
-export { main, monitorChains, setupWebSocketMonitoring };
+export { main, monitorChains, setupWebSocketMonitoring, monitorPrices };

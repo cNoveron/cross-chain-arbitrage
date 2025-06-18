@@ -2,6 +2,9 @@ import { PublicClient } from 'viem';
 import { clients, wsClients, CONFIG, CHAIN_NAMES, type ChainName } from './clients';
 import { log, withRetry, sleep } from './utils';
 
+// Price storage for each chain
+export const lastPrices: Record<string, { usdc: number; usdt: number; timestamp: number }> = {};
+
 // Main monitoring functions
 export async function getBlockNumber(client: PublicClient, chainName: string): Promise<void> {
   try {
@@ -27,6 +30,139 @@ export async function getBalance(client: PublicClient, chainName: string, addres
     log(`${chainName} balance for ${address}: ${balance} wei`);
   } catch (error) {
     log(`Failed to get ${chainName} balance: ${error}`, 'error');
+  }
+}
+
+// Price monitoring functions for CL pools
+export async function getPharaohPoolPrice(
+  client: PublicClient,
+  chainName: string,
+  poolAddress: string
+): Promise<void> {
+  try {
+    // Pharaoh.exchange CL pool price fetching logic
+    // This would typically involve reading the pool's reserves and calculating the price
+    log(`Fetching Pharaoh pool price for ${chainName} at ${poolAddress}`);
+
+    // Example implementation (you'll need to adapt this to Pharaoh's specific contract interface):
+    // const poolContract = getContract({ address: poolAddress, abi: pharaohPoolABI, client });
+    // const reserves = await poolContract.read.getReserves();
+    // const usdcReserve = reserves[0];
+    // const usdtReserve = reserves[1];
+    // const price = usdtReserve / usdcReserve; // USDT per USDC
+
+    // For now, using placeholder logic
+    const mockPrice = 1.0 + (Math.random() - 0.5) * 0.002; // Simulate small price variations around 1.0
+
+    // Store the price
+    lastPrices[chainName] = {
+      usdc: 1.0,
+      usdt: mockPrice,
+      timestamp: Date.now()
+    };
+
+    log(`${chainName} Pharaoh pool price: USDC=1.0, USDT=${mockPrice.toFixed(6)}`);
+
+  } catch (error) {
+    log(`Failed to get ${chainName} Pharaoh pool price: ${error}`, 'error');
+  }
+}
+
+export async function getShadowPoolPrice(
+  client: PublicClient,
+  chainName: string,
+  poolAddress: string
+): Promise<void> {
+  try {
+    // Shadow CL pool price fetching logic
+    // This would typically involve reading the pool's reserves and calculating the price
+    log(`Fetching Shadow pool price for ${chainName} at ${poolAddress}`);
+
+    // Example implementation (you'll need to adapt this to Shadow's specific contract interface):
+    // const poolContract = getContract({ address: poolAddress, abi: shadowPoolABI, client });
+    // const reserves = await poolContract.read.getReserves();
+    // const usdcReserve = reserves[0];
+    // const usdtReserve = reserves[1];
+    // const price = usdtReserve / usdcReserve; // USDT per USDC
+
+    // For now, using placeholder logic
+    const mockPrice = 1.0 + (Math.random() - 0.5) * 0.002; // Simulate small price variations around 1.0
+
+    // Store the price
+    lastPrices[chainName] = {
+      usdc: 1.0,
+      usdt: mockPrice,
+      timestamp: Date.now()
+    };
+
+    log(`${chainName} Shadow pool price: USDC=1.0, USDT=${mockPrice.toFixed(6)}`);
+
+  } catch (error) {
+    log(`Failed to get ${chainName} Shadow pool price: ${error}`, 'error');
+  }
+}
+
+// Continuous price monitoring function
+export async function monitorPrices(): Promise<void> {
+  log('Starting price monitoring...');
+
+  // Pool addresses
+  const PHARAOH_POOL_AVALANCHE = '0x184b487c7e811f1d9734d49e78293e00b3768079';
+  const SHADOW_POOL_SONIC = '0x9053fe060f412ad5677f934f89e07524343ee8e7';
+
+  while (true) {
+    try {
+      // Monitor Pharaoh pool on Avalanche
+      await getPharaohPoolPrice(clients.avalanche, 'avalanche', PHARAOH_POOL_AVALANCHE);
+
+      // Monitor Shadow pool on Sonic
+      await getShadowPoolPrice(clients.sonic, 'sonic', SHADOW_POOL_SONIC);
+
+      // Check for arbitrage opportunities
+      await checkArbitrageOpportunities();
+
+      log('Completed price monitoring cycle');
+      await sleep(CONFIG.PRICE_POLLING_INTERVAL);
+
+    } catch (error) {
+      log(`Error in price monitoring loop: ${error}`, 'error');
+      await sleep(CONFIG.RETRY_DELAY);
+    }
+  }
+}
+
+// Check for arbitrage opportunities between the pools
+async function checkArbitrageOpportunities(): Promise<void> {
+  try {
+    const avalanchePrice = lastPrices['avalanche'];
+    const sonicPrice = lastPrices['sonic'];
+
+    if (!avalanchePrice || !sonicPrice) {
+      return; // Wait for both prices to be available
+    }
+
+    const priceDiff = Math.abs(avalanchePrice.usdt - sonicPrice.usdt);
+    const percentageDiff = (priceDiff / Math.min(avalanchePrice.usdt, sonicPrice.usdt)) * 100;
+
+    log(`Price comparison: Avalanche USDT=${avalanchePrice.usdt.toFixed(6)}, Sonic USDT=${sonicPrice.usdt.toFixed(6)}, Diff=${percentageDiff.toFixed(4)}%`);
+
+    // Arbitrage threshold (adjust as needed)
+    const ARBITRAGE_THRESHOLD = 0.1; // 0.1%
+
+    if (percentageDiff > ARBITRAGE_THRESHOLD) {
+      log(`🚨 ARBITRAGE OPPORTUNITY FOUND! ${percentageDiff.toFixed(4)}% difference`, 'info');
+
+      // Determine which chain has the lower price (buy there) and which has higher (sell there)
+      const buyChain = avalanchePrice.usdt < sonicPrice.usdt ? 'avalanche' : 'sonic';
+      const sellChain = avalanchePrice.usdt < sonicPrice.usdt ? 'sonic' : 'avalanche';
+      const buyPrice = Math.min(avalanchePrice.usdt, sonicPrice.usdt);
+      const sellPrice = Math.max(avalanchePrice.usdt, sonicPrice.usdt);
+
+      await executeArbitrage(buyChain, sellChain, 'USDC/USDT', buyPrice, sellPrice);
+    }
+
+  } catch (error) {
+    log(`Failed to check arbitrage opportunities: ${error}`, 'error');
   }
 }
 
