@@ -154,7 +154,7 @@ export async function executeArbitrage(
     const usdcReceived = usdtReceived / targetPrice; // USDC received from selling
 
     // Calculate profits and costs
-    const grossProfit = usdcReceived - tradeAmount;
+    const grossProfit = Math.max(usdcReceived, usdtReceived) - tradeAmount;
     const gasCostUSD = getGasCostInUSD(sourceChain) + getGasCostInUSD(targetChain);
     const netProfit = grossProfit - gasCostUSD;
 
@@ -251,7 +251,7 @@ async function checkArbitrageOpportunities(): Promise<void> {
       const sellPrice = Math.max(avalanchePrice.usdt, sonicPrice.usdt);
 
       // Use the same logic as executeArbitrage to calculate profitability
-      const tradeAmount = 1000; // $1000 USDC per trade
+      const tradeAmount = 1000; // $1000 USDT per trade
       const sourceBalance = getPaperBalance(buyChain);
 
       // Check if we have enough USDC to execute the trade
