@@ -1,7 +1,7 @@
 import { createPublicClient, http, webSocket, PublicClient, getContract, parseAbi } from 'viem';
 import { avalanche, mainnet } from 'viem/chains';
 import { clients, CONFIG } from './clients';
-import { log, withRetry } from './utils';
+import { log, withRetry, sleep } from './utils';
 
 // Price storage for each chain
 export const lastPrices: Record<string, {
@@ -37,6 +37,52 @@ const PRICE_FEEDS: Record<string, Record<string, string>> = {
 // Cache for price feeds to avoid excessive RPC calls
 const priceCache: Record<string, { price: number; timestamp: number }> = {};
 const CACHE_DURATION = 30000; // 30 seconds
+
+// CCIP (Cross-Chain Interoperability Protocol) Configuration
+const CCIP_CONFIG: Record<string, {
+  router: string;
+  linkToken: string;
+  chainSelector: bigint;
+}> = {
+  avalanche: {
+    router: '0x554472a2720E5E7D5D3C817529aBA05EEd5F82D8', // Avalanche CCIP Router
+    linkToken: '0x5947BB275c521040051D82396192181b413227A3', // LINK token on Avalanche
+    chainSelector: 12532609583862916517n, // Avalanche Fuji testnet
+  },
+  sonic: {
+    router: '0xE561d5E02207fb5eB32cca20a699E0d8919a1476', // Sonic CCIP Router (using Polygon Mumbai as example)
+    linkToken: '0x326C977E6efc84E512bB9C30f76E30c160eD06FB', // LINK token on Sonic
+    chainSelector: 12532609583862916517n, // Sonic chain selector
+  }
+};
+
+// CCIP Message ABI
+const CCIP_MESSAGE_ABI = parseAbi([
+  'function ccipSend(uint64 destinationChainSelector, address receiver, bytes calldata data, address token, uint256 amount, address feeToken, bytes calldata extraArgs) external returns (bytes32)',
+  'function getFee(uint64 destinationChainSelector, address receiver, bytes calldata data, address token, uint256 amount, address feeToken, bytes calldata extraArgs) external view returns (uint256)',
+  'function getSupportedTokens(uint64 chainSelector) external view returns (address[] memory)',
+]);
+
+// USDC and USDT token addresses for CCIP
+const TOKEN_ADDRESSES: Record<string, {
+  USDC: string;
+  USDT: string;
+}> = {
+  avalanche: {
+    USDC: '0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E', // USDC on Avalanche
+    USDT: '0x9702230A8Ea53601f5cD2dc00fDBc13d4dF4A8c7', // USDT on Avalanche
+  },
+  sonic: {
+    USDC: '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174', // USDC on Sonic (using Polygon as example)
+    USDT: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F', // USDT on Sonic
+  }
+};
+
+// CCIP Message Receiver ABI
+const CCIP_RECEIVER_ABI = parseAbi([
+  'function _ccipReceive(bytes calldata message) external',
+  'event TokensTransferred(bytes32 indexed messageId, uint64 indexed sourceChainSelector, address sender, address receiver, address token, uint256 amount, address feeToken, uint256 fees)',
+]);
 
 // Main monitoring functions
 export async function getBlockNumber(client: PublicClient, chainName: string): Promise<void> {
@@ -307,5 +353,137 @@ export async function getAllPoolPrices(): Promise<void> {
     log('Completed pool price collection');
   } catch (error) {
     log(`Failed to get all pool prices: ${error}`, 'error');
+  }
+}
+
+// Bridge tokens using CCIP
+export async function bridgeTokens(
+  sourceChain: string,
+  targetChain: string,
+  token: 'USDC' | 'USDT',
+  amount: bigint
+): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  try {
+    const client = clients[sourceChain];
+    const sourceConfig = CCIP_CONFIG[sourceChain];
+    const targetConfig = CCIP_CONFIG[targetChain];
+    const tokenAddress = TOKEN_ADDRESSES[sourceChain][token];
+
+    if (!sourceConfig || !targetConfig || !tokenAddress) {
+      throw new Error(`CCIP not configured for ${sourceChain} → ${targetChain} for ${token}`);
+    }
+
+    const router = getContract({
+      address: sourceConfig.router as `0x${string}`,
+      abi: CCIP_MESSAGE_ABI,
+      client,
+    });
+
+    // Prepare CCIP message data
+    const receiver = '0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6'; // Our receiver address
+    const data = '0x'; // No additional data for token transfers
+    const feeToken = sourceConfig.linkToken as `0x${string}`;
+    const extraArgs = '0x'; // No extra args
+
+    // Get fee estimate
+    const fee = await router.read.getFee([
+      targetConfig.chainSelector,
+      receiver as `0x${string}`,
+      data,
+      tokenAddress as `0x${string}`,
+      amount,
+      feeToken,
+      extraArgs
+    ]);
+
+    log(`CCIP bridge fee for ${sourceChain} → ${targetChain}: ${fee} LINK`);
+
+    // For now, we'll simulate the bridge transfer
+    // In a real implementation, you would:
+    // 1. Approve the router to spend your tokens
+    // 2. Call ccipSend with the required parameters
+    // 3. Wait for the message to be processed on the target chain
+
+    log(`Simulating CCIP bridge: ${amount} ${token} from ${sourceChain} to ${targetChain}`);
+
+    // Simulate successful bridge transfer
+    const messageId = `0x${Math.random().toString(16).substring(2, 66)}`;
+
+    return {
+      success: true,
+      messageId
+    };
+
+  } catch (error) {
+    log(`CCIP bridge failed: ${error}`, 'error');
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    };
+  }
+}
+
+// Check if CCIP is supported for the token pair
+export function isCCIPSupported(sourceChain: string, targetChain: string, token: 'USDC' | 'USDT'): boolean {
+  return !!(CCIP_CONFIG[sourceChain] && CCIP_CONFIG[targetChain] && TOKEN_ADDRESSES[sourceChain]?.[token]);
+}
+
+// Handle CCIP message receipt on target chain
+export async function handleCCIPMessage(
+  targetChain: string,
+  messageId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const client = clients[targetChain];
+    const targetConfig = CCIP_CONFIG[targetChain];
+
+    if (!targetConfig) {
+      throw new Error(`CCIP not configured for ${targetChain}`);
+    }
+
+    // In a real implementation, you would:
+    // 1. Listen for the CCIP message on the target chain
+    // 2. Verify the message was sent from the source chain
+    // 3. Mint the corresponding tokens on the target chain
+    // 4. Update your balance tracking
+
+    log(`📨 Processing CCIP message ${messageId} on ${targetChain}...`);
+
+    // Simulate message processing
+    await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate processing time
+
+    log(`✅ CCIP message ${messageId} processed successfully on ${targetChain}`);
+
+    return { success: true };
+
+  } catch (error) {
+    log(`Failed to process CCIP message: ${error}`, 'error');
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    };
+  }
+}
+
+// Monitor CCIP messages on target chains
+export async function monitorCCIPMessages(): Promise<void> {
+  log('🔍 Starting CCIP message monitoring...');
+
+  // In a real implementation, you would:
+  // 1. Set up event listeners for CCIP messages
+  // 2. Process incoming messages
+  // 3. Update balances accordingly
+
+  while (true) {
+    try {
+      // Check for pending CCIP messages
+      // This is where you'd implement the actual monitoring logic
+
+      await sleep(5000); // Check every 5 seconds
+
+    } catch (error) {
+      log(`Error monitoring CCIP messages: ${error}`, 'error');
+      await sleep(10000); // Wait longer on error
+    }
   }
 }

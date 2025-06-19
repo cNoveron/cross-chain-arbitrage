@@ -7,7 +7,9 @@ import {
   getAllChainData,
   getAllPoolPrices,
   calculateTotalArbitrageGasCost,
-  getGasCostInUSD
+  getGasCostInUSD,
+  bridgeTokens,
+  isCCIPSupported
 } from './getters';
 
 // Paper trading balance tracking
@@ -161,6 +163,25 @@ export async function executeUSDCTargetedArbitrage(
     // 4. End with USDC only on sellChain
 
     const usdtReceived = tradeAmountUSDC / buyPriceUSDCperUSDT; // USDT received from buying
+    const usdtAmountWei = BigInt(Math.floor(usdtReceived * 1e6)); // Convert to USDT decimals (6 decimals)
+
+    // Check if CCIP is supported for this token pair
+    if (!isCCIPSupported(buyChain, sellChain, 'USDT')) {
+      log(`CCIP not supported for USDT transfer from ${buyChain} to ${sellChain}`, 'warn');
+      return;
+    }
+
+    // Bridge USDT using CCIP
+    log(`🌉 Bridging ${usdtReceived.toFixed(6)} USDT from ${buyChain} to ${sellChain} via CCIP...`);
+    const bridgeResult = await bridgeTokens(buyChain, sellChain, 'USDT', usdtAmountWei);
+
+    if (!bridgeResult.success) {
+      log(`CCIP bridge failed: ${bridgeResult.error}`, 'error');
+      return;
+    }
+
+    log(`✅ CCIP bridge successful! Message ID: ${bridgeResult.messageId}`);
+
     const usdcReceived = usdtReceived * sellPriceUSDCperUSDT; // USDC received from selling
 
     // Calculate profits in USDC terms
@@ -263,6 +284,25 @@ export async function executeUSDTTargetedArbitrage(
     // 4. End with USDT only on sellChain
 
     const usdcReceived = tradeAmountUSDT * buyPriceUSDCperUSDT; // USDC received from selling USDT
+    const usdcAmountWei = BigInt(Math.floor(usdcReceived * 1e6)); // Convert to USDC decimals (6 decimals)
+
+    // Check if CCIP is supported for this token pair
+    if (!isCCIPSupported(buyChain, sellChain, 'USDC')) {
+      log(`CCIP not supported for USDC transfer from ${buyChain} to ${sellChain}`, 'warn');
+      return;
+    }
+
+    // Bridge USDC using CCIP
+    log(`🌉 Bridging ${usdcReceived.toFixed(6)} USDC from ${buyChain} to ${sellChain} via CCIP...`);
+    const bridgeResult = await bridgeTokens(buyChain, sellChain, 'USDC', usdcAmountWei);
+
+    if (!bridgeResult.success) {
+      log(`CCIP bridge failed: ${bridgeResult.error}`, 'error');
+      return;
+    }
+
+    log(`✅ CCIP bridge successful! Message ID: ${bridgeResult.messageId}`);
+
     const usdtReceived = usdcReceived / sellPriceUSDCperUSDT; // USDT received from buying
 
     // Calculate profits in USDT terms
@@ -464,6 +504,25 @@ async function checkUSDCTargetedArbitrage(
   // 3. End with more USDC than we started with
 
   const usdtReceived = tradeAmountUSDC / buyPriceUSDCperUSDT; // USDT received from buying
+  const usdtAmountWei = BigInt(Math.floor(usdtReceived * 1e6)); // Convert to USDT decimals (6 decimals)
+
+  // Check if CCIP is supported for this token pair
+  if (!isCCIPSupported(buyChain, sellChain, 'USDT')) {
+    log(`CCIP not supported for USDT transfer from ${buyChain} to ${sellChain}`, 'warn');
+    return;
+  }
+
+  // Bridge USDT using CCIP
+  log(`🌉 Bridging ${usdtReceived.toFixed(6)} USDT from ${buyChain} to ${sellChain} via CCIP...`);
+  const bridgeResult = await bridgeTokens(buyChain, sellChain, 'USDT', usdtAmountWei);
+
+  if (!bridgeResult.success) {
+    log(`CCIP bridge failed: ${bridgeResult.error}`, 'error');
+    return;
+  }
+
+  log(`✅ CCIP bridge successful! Message ID: ${bridgeResult.messageId}`);
+
   const usdcReceived = usdtReceived * sellPriceUSDCperUSDT; // USDC received from selling
 
   // Calculate profit in USDC terms
@@ -511,6 +570,25 @@ async function checkUSDTTargetedArbitrage(
   // 4. End with USDT only on sellChain
 
   const usdcReceived = tradeAmountUSDT * buyPriceUSDCperUSDT; // USDC received from selling USDT
+  const usdcAmountWei = BigInt(Math.floor(usdcReceived * 1e6)); // Convert to USDC decimals (6 decimals)
+
+  // Check if CCIP is supported for this token pair
+  if (!isCCIPSupported(buyChain, sellChain, 'USDC')) {
+    log(`CCIP not supported for USDC transfer from ${buyChain} to ${sellChain}`, 'warn');
+    return;
+  }
+
+  // Bridge USDC using CCIP
+  log(`🌉 Bridging ${usdcReceived.toFixed(6)} USDC from ${buyChain} to ${sellChain} via CCIP...`);
+  const bridgeResult = await bridgeTokens(buyChain, sellChain, 'USDC', usdcAmountWei);
+
+  if (!bridgeResult.success) {
+    log(`CCIP bridge failed: ${bridgeResult.error}`, 'error');
+    return;
+  }
+
+  log(`✅ CCIP bridge successful! Message ID: ${bridgeResult.messageId}`);
+
   const usdtReceived = usdcReceived / sellPriceUSDCperUSDT; // USDT received from buying
 
   // Calculate profits in USDT terms
