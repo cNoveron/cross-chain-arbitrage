@@ -143,6 +143,11 @@ export async function executeUSDCTargetedArbitrage(
     const sourceBalance = getPaperBalance(buyChain);
     const targetBalance = getPaperBalance(sellChain);
 
+    // Log balances before trade
+    log(`📊 Pre-trade balances:`);
+    log(`  ${buyChain}: ${sourceBalance.usdc.toFixed(2)} USDC, ${sourceBalance.usdt.toFixed(2)} USDT`);
+    log(`  ${sellChain}: ${targetBalance.usdc.toFixed(2)} USDC, ${targetBalance.usdt.toFixed(2)} USDT`);
+
     // Check if we have enough USDC to execute the trade
     if (sourceBalance.usdc < tradeAmountUSDC) {
       log(`Insufficient USDC on ${buyChain} for USDC-targeted paper trade. Available: ${sourceBalance.usdc}, Required: ${tradeAmountUSDC}`, 'warn');
@@ -150,6 +155,11 @@ export async function executeUSDCTargetedArbitrage(
     }
 
     // USDC-targeted arbitrage calculation
+    // 1. Buy USDT with USDC on buyChain (cheaper price)
+    // 2. Transfer USDT to sellChain (cross-chain bridge)
+    // 3. Sell USDT for USDC on sellChain (more expensive price)
+    // 4. End with USDC only on sellChain
+
     const usdtReceived = tradeAmountUSDC / buyPriceUSDCperUSDT; // USDT received from buying
     const usdcReceived = usdtReceived * sellPriceUSDCperUSDT; // USDC received from selling
 
@@ -164,16 +174,16 @@ export async function executeUSDCTargetedArbitrage(
 
     // Only execute and record the trade if it's profitable
     if (netProfitUSD > 0) {
-      // Update paper balances
+      // Update paper balances - simulate cross-chain transfer
       const newSourceBalance = {
-        usdc: sourceBalance.usdc - tradeAmountUSDC,
-        usdt: sourceBalance.usdt + usdtReceived,
+        usdc: sourceBalance.usdc - tradeAmountUSDC, // Spend USDC
+        usdt: sourceBalance.usdt, // No USDT left (transferred to other chain)
         timestamp: Date.now()
       };
 
       const newTargetBalance = {
-        usdc: targetBalance.usdc + usdcReceived,
-        usdt: targetBalance.usdt,
+        usdc: targetBalance.usdc + usdcReceived, // Receive USDC from selling USDT
+        usdt: targetBalance.usdt, // No USDT left (sold for USDC)
         timestamp: Date.now()
       };
 
@@ -193,6 +203,11 @@ export async function executeUSDCTargetedArbitrage(
       // Update balances
       updatePaperBalance(buyChain, newSourceBalance.usdc, newSourceBalance.usdt);
       updatePaperBalance(sellChain, newTargetBalance.usdc, newTargetBalance.usdt);
+
+      // Log post-trade balances
+      log(`📊 Post-trade balances:`);
+      log(`  ${buyChain}: ${newSourceBalance.usdc.toFixed(2)} USDC, ${newSourceBalance.usdt.toFixed(2)} USDT`);
+      log(`  ${sellChain}: ${newTargetBalance.usdc.toFixed(2)} USDC, ${newTargetBalance.usdt.toFixed(2)} USDT`);
 
       // Log trade summary
       const stats = getPaperTradingStats();
@@ -230,6 +245,11 @@ export async function executeUSDTTargetedArbitrage(
     const sourceBalance = getPaperBalance(buyChain);
     const targetBalance = getPaperBalance(sellChain);
 
+    // Log balances before trade
+    log(`📊 Pre-trade balances:`);
+    log(`  ${buyChain}: ${sourceBalance.usdc.toFixed(2)} USDC, ${sourceBalance.usdt.toFixed(2)} USDT`);
+    log(`  ${sellChain}: ${targetBalance.usdc.toFixed(2)} USDC, ${targetBalance.usdt.toFixed(2)} USDT`);
+
     // Check if we have enough USDT to execute the trade
     if (sourceBalance.usdt < tradeAmountUSDT) {
       log(`Insufficient USDT on ${buyChain} for USDT-targeted paper trade. Available: ${sourceBalance.usdt}, Required: ${tradeAmountUSDT}`, 'warn');
@@ -237,6 +257,11 @@ export async function executeUSDTTargetedArbitrage(
     }
 
     // USDT-targeted arbitrage calculation
+    // 1. Sell USDT for USDC on buyChain (cheaper price = more USDC per USDT)
+    // 2. Transfer USDC to sellChain (cross-chain bridge)
+    // 3. Buy USDT with USDC on sellChain (more expensive price = less USDC per USDT)
+    // 4. End with USDT only on sellChain
+
     const usdcReceived = tradeAmountUSDT * buyPriceUSDCperUSDT; // USDC received from selling USDT
     const usdtReceived = usdcReceived / sellPriceUSDCperUSDT; // USDT received from buying
 
@@ -251,16 +276,16 @@ export async function executeUSDTTargetedArbitrage(
 
     // Only execute and record the trade if it's profitable
     if (netProfitUSD > 0) {
-      // Update paper balances
+      // Update paper balances - simulate cross-chain transfer
       const newSourceBalance = {
-        usdc: sourceBalance.usdc + usdcReceived,
-        usdt: sourceBalance.usdt - tradeAmountUSDT,
+        usdc: sourceBalance.usdc, // No USDC left (transferred to other chain)
+        usdt: sourceBalance.usdt - tradeAmountUSDT, // Spend USDT
         timestamp: Date.now()
       };
 
       const newTargetBalance = {
-        usdc: targetBalance.usdc,
-        usdt: targetBalance.usdt + usdtReceived,
+        usdc: targetBalance.usdc, // No USDC left (spent buying USDT)
+        usdt: targetBalance.usdt + usdtReceived, // Receive USDT from buying
         timestamp: Date.now()
       };
 
@@ -280,6 +305,11 @@ export async function executeUSDTTargetedArbitrage(
       // Update balances
       updatePaperBalance(buyChain, newSourceBalance.usdc, newSourceBalance.usdt);
       updatePaperBalance(sellChain, newTargetBalance.usdc, newTargetBalance.usdt);
+
+      // Log post-trade balances
+      log(`📊 Post-trade balances:`);
+      log(`  ${buyChain}: ${newSourceBalance.usdc.toFixed(2)} USDC, ${newSourceBalance.usdt.toFixed(2)} USDT`);
+      log(`  ${sellChain}: ${newTargetBalance.usdc.toFixed(2)} USDC, ${newTargetBalance.usdt.toFixed(2)} USDT`);
 
       // Log trade summary
       const stats = getPaperTradingStats();
@@ -326,6 +356,9 @@ async function checkArbitrageOpportunities(): Promise<void> {
       return; // Wait for both prices to be available
     }
 
+    // Log current balances before checking arbitrage
+    logBalances();
+
     // Price comparison - USDT price denominated in USDC (how many USDC per 1 USDT)
     const priceDiff = Math.abs(avalanchePrice.usdt - sonicPrice.usdt);
     const percentageDiff = (priceDiff / Math.min(avalanchePrice.usdt, sonicPrice.usdt)) * 100;
@@ -356,11 +389,49 @@ async function checkArbitrageOpportunities(): Promise<void> {
       // Check both arbitrage scenarios: USDC-targeted and USDT-targeted
       await checkUSDCTargetedArbitrage(buyChain, sellChain, buyPriceUSDCperUSDT, sellPriceUSDCperUSDT, totalGasUSD);
       await checkUSDTTargetedArbitrage(buyChain, sellChain, buyPriceUSDCperUSDT, sellPriceUSDCperUSDT, totalGasUSD);
+
+      // Log updated balances after arbitrage checks
+      logBalances();
     }
 
   } catch (error) {
     log(`Failed to check arbitrage opportunities: ${error}`, 'error');
   }
+}
+
+// Log current balances on all chains
+function logBalances(): void {
+  log('💰 Current Paper Trading Balances:');
+
+  const avalancheBalance = getPaperBalance('avalanche');
+  const sonicBalance = getPaperBalance('sonic');
+
+  // Calculate total portfolio value
+  const avalancheValue = avalancheBalance.usdc + avalancheBalance.usdt;
+  const sonicValue = sonicBalance.usdc + sonicBalance.usdt;
+  const totalValue = avalancheValue + sonicValue;
+
+  log(`  🏔️  Avalanche:`);
+  log(`    USDC: ${avalancheBalance.usdc.toFixed(2)} ($${avalancheBalance.usdc.toFixed(2)})`);
+  log(`    USDT: ${avalancheBalance.usdt.toFixed(2)} ($${avalancheBalance.usdt.toFixed(2)})`);
+  log(`    Total: $${avalancheValue.toFixed(2)}`);
+
+  log(`  🎵 Sonic:`);
+  log(`    USDC: ${sonicBalance.usdc.toFixed(2)} ($${sonicBalance.usdc.toFixed(2)})`);
+  log(`    USDT: ${sonicBalance.usdt.toFixed(2)} ($${sonicBalance.usdt.toFixed(2)})`);
+  log(`    Total: $${sonicValue.toFixed(2)}`);
+
+  log(`  📊 Portfolio Total: $${totalValue.toFixed(2)}`);
+
+  // Show trading stats
+  const stats = getPaperTradingStats();
+  log(`  📈 Trading Stats:`);
+  log(`    Total Trades: ${stats.totalTrades}`);
+  log(`    Profitable Trades: ${stats.profitableTrades}`);
+  log(`    Total Profit: $${stats.totalProfit.toFixed(4)}`);
+  log(`    Win Rate: ${stats.winRate.toFixed(1)}%`);
+
+  log('─'.repeat(50));
 }
 
 // Check USDC-targeted arbitrage: Start with USDC, end with more USDC
@@ -412,6 +483,7 @@ async function checkUSDTTargetedArbitrage(
 ): Promise<void> {
   const tradeAmountUSDT = 1000; // Start with $1000 USDT
   const sourceBalance = getPaperBalance(buyChain);
+  const targetBalance = getPaperBalance(sellChain);
 
   // Check if we have enough USDT to execute the trade
   if (sourceBalance.usdt < tradeAmountUSDT) {
@@ -421,15 +493,21 @@ async function checkUSDTTargetedArbitrage(
 
   // USDT-targeted arbitrage logic:
   // 1. Sell USDT for USDC on buyChain (cheaper price = more USDC per USDT)
-  // 2. Buy USDT with USDC on sellChain (more expensive price = less USDC per USDT)
-  // 3. End with more USDT than we started with
+  // 2. Transfer USDC to sellChain (cross-chain bridge)
+  // 3. Buy USDT with USDC on sellChain (more expensive price = less USDC per USDT)
+  // 4. End with USDT only on sellChain
 
   const usdcReceived = tradeAmountUSDT * buyPriceUSDCperUSDT; // USDC received from selling USDT
   const usdtReceived = usdcReceived / sellPriceUSDCperUSDT; // USDT received from buying
 
-  // Calculate profit in USDT terms
+  // Calculate profits in USDT terms
   const grossProfitUSDT = usdtReceived - tradeAmountUSDT;
-  const netProfitUSD = grossProfitUSDT - totalGasUSD; // Convert to USD for comparison
+  const [sourceGasUSD, targetGasUSD] = await Promise.all([
+    getGasCostInUSD(buyChain),
+    getGasCostInUSD(sellChain)
+  ]);
+  const gasCostUSD = sourceGasUSD + targetGasUSD;
+  const netProfitUSD = grossProfitUSDT - gasCostUSD;
 
   log(`USDT-targeted arbitrage: Start ${tradeAmountUSDT} USDT → End ${usdtReceived.toFixed(4)} USDT = ${grossProfitUSDT.toFixed(4)} USDT profit`);
   log(`Net profit after gas: $${netProfitUSD.toFixed(4)}`);
@@ -444,6 +522,10 @@ async function checkUSDTTargetedArbitrage(
 // Continuous price monitoring function
 export async function monitorPrices(): Promise<void> {
   log('Starting price monitoring...');
+
+  // Log initial balances
+  log('🚀 Initial Portfolio State:');
+  logBalances();
 
   while (true) {
     try {
