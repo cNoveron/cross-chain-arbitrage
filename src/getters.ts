@@ -27,6 +27,13 @@ const CHAINLINK_PRICE_FEED_ABI = parseAbi([
 // Minimal ABI for pool contracts (getReserves function)
 const POOL_ABI = parseAbi([
   'function getReserves() external view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)',
+  'function token0() external view returns (address)',
+  'function token1() external view returns (address)',
+]);
+
+// Minimal ABI for ERC20 tokens (symbol function)
+const ERC20_ABI = parseAbi([
+  'function symbol() external view returns (string)',
 ]);
 
 // Chainlink Price Feed addresses
@@ -211,28 +218,50 @@ export async function getGasCostInUSD(chain: string): Promise<number> {
 export async function getPharaohPoolPrice(
   client: PublicClient,
   chainName: string,
-  poolAddress: string
+  poolAddress: string,
+  targetTokenIndex: number = 1
 ): Promise<void> {
   try {
     // Pharaoh.exchange CL pool price fetching logic
-    // This would typically involve reading the pool's reserves and calculating the price
-    log(`Fetching Pharaoh pool price for ${chainName} at ${poolAddress}`);
+    log(`Fetching Pharaoh pool price for ${chainName} at ${poolAddress} (targeting token index ${targetTokenIndex})`);
 
     // Implementation using minimal ABI
     const poolContract = getContract({ address: poolAddress as `0x${string}`, abi: POOL_ABI, client });
-    const reserves = await poolContract.read.getReserves();
-    const usdcReserve = Number(reserves[0]);
-    const usdtReserve = Number(reserves[1]);
-    const price = usdtReserve / usdcReserve; // USDT per USDC
+
+    // Get reserves and token addresses
+    const [reserves, token0Address, token1Address] = await Promise.all([
+      poolContract.read.getReserves(),
+      poolContract.read.token0(),
+      poolContract.read.token1(),
+    ]);
+
+    // Get token symbols
+    const token0Contract = getContract({ address: token0Address, abi: ERC20_ABI, client });
+    const token1Contract = getContract({ address: token1Address, abi: ERC20_ABI, client });
+
+    const [token0Symbol, token1Symbol] = await Promise.all([
+      token0Contract.read.symbol(),
+      token1Contract.read.symbol(),
+    ]);
+
+    const token0Reserve = Number(reserves[0]);
+    const token1Reserve = Number(reserves[1]);
+
+    // Calculate price based on target token index
+    // If targeting token1 (index 1), calculate token0Reserve/token1Reserve
+    // If targeting token0 (index 0), calculate token1Reserve/token0Reserve
+    const price = targetTokenIndex === 1 ? token0Reserve / token1Reserve : token1Reserve / token0Reserve;
 
     // Store the price
     lastPrices[chainName] = {
-      usdc: 1.0,
-      usdt: price,
+      usdc: targetTokenIndex === 1 ? price : 1.0,
+      usdt: targetTokenIndex === 1 ? 1.0 : price,
       timestamp: Date.now()
     };
 
-    log(`${chainName} Pharaoh pool price: USDC=1.0, USDT=${price.toFixed(6)}`);
+    const baseTokenSymbol = targetTokenIndex === 1 ? token0Symbol : token1Symbol;
+    const targetTokenSymbol = targetTokenIndex === 1 ? token1Symbol : token0Symbol;
+    log(`${chainName} Pharaoh pool price: ${baseTokenSymbol}=${price.toFixed(6)}, ${targetTokenSymbol}=1.0`);
 
   } catch (error) {
     log(`Failed to get ${chainName} Pharaoh pool price: ${error}`, 'error');
@@ -242,28 +271,50 @@ export async function getPharaohPoolPrice(
 export async function getShadowPoolPrice(
   client: PublicClient,
   chainName: string,
-  poolAddress: string
+  poolAddress: string,
+  targetTokenIndex: number = 1
 ): Promise<void> {
   try {
     // Shadow CL pool price fetching logic
-    // This would typically involve reading the pool's reserves and calculating the price
-    log(`Fetching Shadow pool price for ${chainName} at ${poolAddress}`);
+    log(`Fetching Shadow pool price for ${chainName} at ${poolAddress} (targeting token index ${targetTokenIndex})`);
 
     // Implementation using minimal ABI
     const poolContract = getContract({ address: poolAddress as `0x${string}`, abi: POOL_ABI, client });
-    const reserves = await poolContract.read.getReserves();
-    const usdcReserve = Number(reserves[0]);
-    const usdtReserve = Number(reserves[1]);
-    const price = usdtReserve / usdcReserve; // USDT per USDC
+
+    // Get reserves and token addresses
+    const [reserves, token0Address, token1Address] = await Promise.all([
+      poolContract.read.getReserves(),
+      poolContract.read.token0(),
+      poolContract.read.token1(),
+    ]);
+
+    // Get token symbols
+    const token0Contract = getContract({ address: token0Address, abi: ERC20_ABI, client });
+    const token1Contract = getContract({ address: token1Address, abi: ERC20_ABI, client });
+
+    const [token0Symbol, token1Symbol] = await Promise.all([
+      token0Contract.read.symbol(),
+      token1Contract.read.symbol(),
+    ]);
+
+    const token0Reserve = Number(reserves[0]);
+    const token1Reserve = Number(reserves[1]);
+
+    // Calculate price based on target token index
+    // If targeting token1 (index 1), calculate token0Reserve/token1Reserve
+    // If targeting token0 (index 0), calculate token1Reserve/token0Reserve
+    const price = targetTokenIndex === 1 ? token0Reserve / token1Reserve : token1Reserve / token0Reserve;
 
     // Store the price
     lastPrices[chainName] = {
-      usdc: 1.0,
-      usdt: price,
+      usdc: targetTokenIndex === 1 ? price : 1.0,
+      usdt: targetTokenIndex === 1 ? 1.0 : price,
       timestamp: Date.now()
     };
 
-    log(`${chainName} Shadow pool price: USDC=1.0, USDT=${price.toFixed(6)}`);
+    const baseTokenSymbol = targetTokenIndex === 1 ? token0Symbol : token1Symbol;
+    const targetTokenSymbol = targetTokenIndex === 1 ? token1Symbol : token0Symbol;
+    log(`${chainName} Shadow pool price: ${baseTokenSymbol}=${price.toFixed(6)}, ${targetTokenSymbol}=1.0`);
 
   } catch (error) {
     log(`Failed to get ${chainName} Shadow pool price: ${error}`, 'error');
@@ -299,9 +350,9 @@ export async function getAllPoolPrices(): Promise<void> {
     const PHARAOH_POOL_AVALANCHE = '0x184b487c7e811f1d9734d49e78293e00b3768079';
     const SHADOW_POOL_SONIC = '0x9053fe060f412ad5677f934f89e07524343ee8e7';
 
-    // Get pool prices
-    await getPharaohPoolPrice(clients.avalanche, 'avalanche', PHARAOH_POOL_AVALANCHE);
-    await getShadowPoolPrice(clients.sonic, 'sonic', SHADOW_POOL_SONIC);
+    // Get pool prices for USDC/USDT pairs
+    await getPharaohPoolPrice(clients.avalanche, 'avalanche', PHARAOH_POOL_AVALANCHE, 1);
+    await getShadowPoolPrice(clients.sonic, 'sonic', SHADOW_POOL_SONIC, 1);
 
     log('Completed pool price collection');
   } catch (error) {
