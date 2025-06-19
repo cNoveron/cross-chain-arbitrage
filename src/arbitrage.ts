@@ -154,8 +154,12 @@ export async function executeArbitrage(
     const usdcReceived = usdtReceived / targetPrice; // USDC received from selling
 
     // Calculate profits and costs
-    const grossProfit = Math.max(usdcReceived, usdtReceived) - tradeAmount;
-    const gasCostUSD = getGasCostInUSD(sourceChain) + getGasCostInUSD(targetChain);
+    const grossProfit = usdcReceived - tradeAmount;
+    const [sourceGasUSD, targetGasUSD] = await Promise.all([
+      getGasCostInUSD(sourceChain),
+      getGasCostInUSD(targetChain)
+    ]);
+    const gasCostUSD = sourceGasUSD + targetGasUSD;
     const netProfit = grossProfit - gasCostUSD;
 
     // Only execute and record the trade if it's profitable
@@ -232,8 +236,10 @@ async function checkArbitrageOpportunities(): Promise<void> {
     log(`Price comparison: Avalanche USDT=${avalanchePrice.usdt.toFixed(6)}, Sonic USDT=${sonicPrice.usdt.toFixed(6)}, Diff=${percentageDiff.toFixed(4)}%`);
 
     // Calculate gas costs in USD
-    const avalancheGasUSD = getGasCostInUSD('avalanche');
-    const sonicGasUSD = getGasCostInUSD('sonic');
+    const [avalancheGasUSD, sonicGasUSD] = await Promise.all([
+      getGasCostInUSD('avalanche'),
+      getGasCostInUSD('sonic')
+    ]);
     const totalGasUSD = avalancheGasUSD + sonicGasUSD;
 
     log(`Gas costs: Avalanche $${avalancheGasUSD.toFixed(4)}, Sonic $${sonicGasUSD.toFixed(4)}, Total $${totalGasUSD.toFixed(4)}`);
@@ -251,7 +257,7 @@ async function checkArbitrageOpportunities(): Promise<void> {
       const sellPrice = Math.max(avalanchePrice.usdt, sonicPrice.usdt);
 
       // Use the same logic as executeArbitrage to calculate profitability
-      const tradeAmount = 1000; // $1000 USDT per trade
+      const tradeAmount = 1000; // $1000 USDC per trade
       const sourceBalance = getPaperBalance(buyChain);
 
       // Check if we have enough USDC to execute the trade

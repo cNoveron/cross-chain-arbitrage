@@ -1,9 +1,14 @@
-import { PublicClient } from 'viem';
+import { createPublicClient, http, webSocket, PublicClient, getContract, parseAbi } from 'viem';
+import { avalanche, mainnet } from 'viem/chains';
 import { clients, CONFIG } from './clients';
 import { log, withRetry } from './utils';
 
 // Price storage for each chain
-export const lastPrices: Record<string, { usdc: number; usdt: number; timestamp: number }> = {};
+export const lastPrices: Record<string, {
+  usdc: number;
+  usdt: number;
+  timestamp: number
+}> = {};
 
 // Gas cost storage for each chain
 export const gasCosts: Record<string, {
@@ -12,6 +17,26 @@ export const gasCosts: Record<string, {
   totalCost: bigint;
   timestamp: number
 }> = {};
+
+// Chainlink Price Feed ABI (simplified for price feeds)
+const CHAINLINK_PRICE_FEED_ABI = parseAbi([
+  'function latestRoundData() external view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)',
+  'function decimals() external view returns (uint8)',
+]);
+
+// Chainlink Price Feed addresses
+const PRICE_FEEDS: Record<string, Record<string, string>> = {
+  avalanche: {
+    AVAX: '0x0A77230d17318075983913bC2145DB16C7366156',
+  },
+  sonic: {
+    S: '0xc76dFb89fF298145b417d221B2c747d84952e01d',  // S/USD (mainnet)
+  }
+};
+
+// Cache for price feeds to avoid excessive RPC calls
+const priceCache: Record<string, { price: number; timestamp: number }> = {};
+const CACHE_DURATION = 30000; // 30 seconds
 
 // Main monitoring functions
 export async function getBlockNumber(client: PublicClient, chainName: string): Promise<void> {
@@ -68,7 +93,7 @@ export async function estimateSwapGasCost(
       timestamp: Date.now()
     };
 
-    log(`${chainName} gas cost: ${gasPrice} wei/gas × ${estimatedGas} gas = ${totalCost} wei (${Number(totalCost) / 1e18} ETH)`);
+    log(`${chainName} gas cost: ${gasPrice} wei/gas × ${estimatedGas} gas = ${totalCost} wei (${Number(totalCost) / 1e18} Native Tokens)`);
 
   } catch (error) {
     log(`Failed to estimate ${chainName} swap gas cost: ${error}`, 'error');
@@ -82,27 +107,99 @@ export function calculateTotalArbitrageGasCost(): bigint {
 
   const totalCost = avalancheCost + sonicCost;
 
-  log(`Total arbitrage gas cost: ${avalancheCost} + ${sonicCost} = ${totalCost} wei (${Number(totalCost) / 1e18} ETH)`);
+  log(`Total arbitrage gas cost: ${avalancheCost} + ${sonicCost} = ${totalCost} wei (${Number(totalCost) / 1e18} Native Tokens)`);
 
   return totalCost;
 }
 
-// Get gas cost in USD (approximate)
-export function getGasCostInUSD(chainName: string): number {
-  const gasCost = gasCosts[chainName];
-  if (!gasCost) return 0;
+// Get USD price from Chainlink price feed
+export async function getUSDPrice(chain: string, asset: string): Promise<number> {
+  try {
+    const cacheKey = `${chain}-${asset}`;
+    const now = Date.now();
 
-  // Approximate ETH prices (you might want to fetch these dynamically)
-  const ethPrices: Record<string, number> = {
-    avalanche: 25.0, // AVAX price in USD
-    sonic: 1.0,      // Assuming Sonic uses ETH or similar pricing
-  };
+    // Check cache first
+    if (priceCache[cacheKey] && (now - priceCache[cacheKey].timestamp) < CACHE_DURATION) {
+      return priceCache[cacheKey].price;
+    }
 
-  const ethPrice = ethPrices[chainName] || 1.0;
-  const costInEth = Number(gasCost.totalCost) / 1e18;
-  const costInUSD = costInEth * ethPrice;
+    const client = clients[chain];
+    const feedAddress = PRICE_FEEDS[chain]?.[asset];
 
-  return costInUSD;
+    if (!feedAddress) {
+      throw new Error(`No price feed found for ${asset} on ${chain}`);
+    }
+
+    const priceFeed = getContract({
+      address: feedAddress as `0x${string}`,
+      abi: CHAINLINK_PRICE_FEED_ABI,
+      client,
+    });
+
+    // Get latest price data
+    const [roundData, decimals] = await Promise.all([
+      priceFeed.read.latestRoundData(),
+      priceFeed.read.decimals(),
+    ]);
+
+    // roundData is a tuple: [roundId, answer, startedAt, updatedAt, answeredInRound]
+    const price = Number(roundData[1]) / Math.pow(10, decimals);
+
+    // Cache the result
+    priceCache[cacheKey] = {
+      price,
+      timestamp: now
+    };
+
+    log(`Fetched ${asset} price on ${chain}: $${price.toFixed(2)}`);
+    return price;
+
+  } catch (error) {
+    log(`Failed to fetch ${asset} price on ${chain}: ${error}`, 'error');
+
+    // Fallback to hardcoded prices if Chainlink fails
+    const fallbackPrices: Record<string, Record<string, number>> = {
+      avalanche: {
+        AVAX: 25.0,
+      },
+      sonic: {
+        S: .0,
+      }
+    };
+
+    const fallbackPrice = fallbackPrices[chain]?.[asset];
+    if (fallbackPrice) {
+      log(`Using fallback price for ${asset} on ${chain}: $${fallbackPrice}`, 'warn');
+      return fallbackPrice;
+    }
+
+    throw new Error(`No price available for ${asset} on ${chain}`);
+  }
+}
+
+// Get gas cost in USD with real-time price feeds
+export async function getGasCostInUSD(chain: string): Promise<number> {
+  try {
+    // Use stored gas cost data if available
+    const gasCost = gasCosts[chain];
+    if (!gasCost) {
+      log(`No gas cost data available for ${chain}, using fallback calculation`, 'warn');
+      return 0;
+    }
+
+    const gasCostEth = Number(gasCost.totalCost) / 1e18;
+
+    // Get native token price in USD
+    const nativeToken = chain === 'avalanche' ? 'AVAX' : 'S';
+    const nativeTokenPrice = await getUSDPrice(chain, nativeToken);
+
+    const gasCostUSD = gasCostEth * nativeTokenPrice;
+    return gasCostUSD;
+
+  } catch (error) {
+    log(`Failed to calculate gas cost in USD for ${chain}: ${error}`, 'error');
+    return 0;
+  }
 }
 
 // Price monitoring functions for CL pools

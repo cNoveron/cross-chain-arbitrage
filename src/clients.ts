@@ -27,8 +27,8 @@ const sonicChain = {
   network: 'sonic',
   nativeCurrency: {
     decimals: 18,
-    name: 'Ether',
-    symbol: 'ETH',
+    name: 'Sonic',
+    symbol: 'S',
   },
   rpcUrls: {
     default: { http: [CONFIG.SONIC_RPC] },
