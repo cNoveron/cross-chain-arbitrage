@@ -24,6 +24,11 @@ const CHAINLINK_PRICE_FEED_ABI = parseAbi([
   'function decimals() external view returns (uint8)',
 ]);
 
+// Minimal ABI for pool contracts (getReserves function)
+const POOL_ABI = parseAbi([
+  'function getReserves() external view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)',
+]);
+
 // Chainlink Price Feed addresses
 const PRICE_FEEDS: Record<string, Record<string, string>> = {
   avalanche: {
@@ -213,24 +218,21 @@ export async function getPharaohPoolPrice(
     // This would typically involve reading the pool's reserves and calculating the price
     log(`Fetching Pharaoh pool price for ${chainName} at ${poolAddress}`);
 
-    // Example implementation (you'll need to adapt this to Pharaoh's specific contract interface):
-    // const poolContract = getContract({ address: poolAddress, abi: pharaohPoolABI, client });
-    // const reserves = await poolContract.read.getReserves();
-    // const usdcReserve = reserves[0];
-    // const usdtReserve = reserves[1];
-    // const price = usdtReserve / usdcReserve; // USDT per USDC
-
-    // For now, using placeholder logic
-    const mockPrice = 1.0 + (Math.random() - 0.5) * 0.002; // Simulate small price variations around 1.0
+    // Implementation using minimal ABI
+    const poolContract = getContract({ address: poolAddress as `0x${string}`, abi: POOL_ABI, client });
+    const reserves = await poolContract.read.getReserves();
+    const usdcReserve = Number(reserves[0]);
+    const usdtReserve = Number(reserves[1]);
+    const price = usdtReserve / usdcReserve; // USDT per USDC
 
     // Store the price
     lastPrices[chainName] = {
       usdc: 1.0,
-      usdt: mockPrice,
+      usdt: price,
       timestamp: Date.now()
     };
 
-    log(`${chainName} Pharaoh pool price: USDC=1.0, USDT=${mockPrice.toFixed(6)}`);
+    log(`${chainName} Pharaoh pool price: USDC=1.0, USDT=${price.toFixed(6)}`);
 
   } catch (error) {
     log(`Failed to get ${chainName} Pharaoh pool price: ${error}`, 'error');
@@ -247,24 +249,21 @@ export async function getShadowPoolPrice(
     // This would typically involve reading the pool's reserves and calculating the price
     log(`Fetching Shadow pool price for ${chainName} at ${poolAddress}`);
 
-    // Example implementation (you'll need to adapt this to Shadow's specific contract interface):
-    // const poolContract = getContract({ address: poolAddress, abi: shadowPoolABI, client });
-    // const reserves = await poolContract.read.getReserves();
-    // const usdcReserve = reserves[0];
-    // const usdtReserve = reserves[1];
-    // const price = usdtReserve / usdcReserve; // USDT per USDC
-
-    // For now, using placeholder logic
-    const mockPrice = 1.0 + (Math.random() - 0.5) * 0.002; // Simulate small price variations around 1.0
+    // Implementation using minimal ABI
+    const poolContract = getContract({ address: poolAddress as `0x${string}`, abi: POOL_ABI, client });
+    const reserves = await poolContract.read.getReserves();
+    const usdcReserve = Number(reserves[0]);
+    const usdtReserve = Number(reserves[1]);
+    const price = usdtReserve / usdcReserve; // USDT per USDC
 
     // Store the price
     lastPrices[chainName] = {
       usdc: 1.0,
-      usdt: mockPrice,
+      usdt: price,
       timestamp: Date.now()
     };
 
-    log(`${chainName} Shadow pool price: USDC=1.0, USDT=${mockPrice.toFixed(6)}`);
+    log(`${chainName} Shadow pool price: USDC=1.0, USDT=${price.toFixed(6)}`);
 
   } catch (error) {
     log(`Failed to get ${chainName} Shadow pool price: ${error}`, 'error');
