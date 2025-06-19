@@ -173,7 +173,7 @@ export async function executeUSDCTargetedArbitrage(
     const netProfitUSD = grossProfitUSDC - gasCostUSD;
 
     // Only execute and record the trade if it's profitable
-    if (netProfitUSD > 0) {
+    if (netProfitUSD > CONFIG.PROFIT_THRESHOLD) {
       // Update paper balances - simulate cross-chain transfer
       const newSourceBalance = {
         usdc: sourceBalance.usdc - tradeAmountUSDC, // Spend USDC
@@ -222,7 +222,7 @@ export async function executeUSDCTargetedArbitrage(
       log(`  Win Rate: ${stats.winRate.toFixed(1)}%`);
 
     } else {
-      log(`USDC-targeted paper trade not executed - unprofitable after gas costs (Net: $${netProfitUSD.toFixed(4)})`, 'warn');
+      log(`USDC-targeted paper trade not executed - insufficient profit (Net: $${netProfitUSD.toFixed(4)}, Threshold: $${CONFIG.PROFIT_THRESHOLD})`, 'warn');
     }
 
   } catch (error) {
@@ -275,7 +275,7 @@ export async function executeUSDTTargetedArbitrage(
     const netProfitUSD = grossProfitUSDT - gasCostUSD;
 
     // Only execute and record the trade if it's profitable
-    if (netProfitUSD > 0) {
+    if (netProfitUSD > CONFIG.PROFIT_THRESHOLD) {
       // Update paper balances - simulate cross-chain transfer
       const newSourceBalance = {
         usdc: sourceBalance.usdc, // No USDC left (transferred to other chain)
@@ -324,7 +324,7 @@ export async function executeUSDTTargetedArbitrage(
       log(`  Win Rate: ${stats.winRate.toFixed(1)}%`);
 
     } else {
-      log(`USDT-targeted paper trade not executed - unprofitable after gas costs (Net: $${netProfitUSD.toFixed(4)})`, 'warn');
+      log(`USDT-targeted paper trade not executed - insufficient profit (Net: $${netProfitUSD.toFixed(4)}, Threshold: $${CONFIG.PROFIT_THRESHOLD})`, 'warn');
     }
 
   } catch (error) {
@@ -374,25 +374,18 @@ async function checkArbitrageOpportunities(): Promise<void> {
 
     log(`Gas costs: Avalanche $${avalancheGasUSD.toFixed(4)}, Sonic $${sonicGasUSD.toFixed(4)}, Total $${totalGasUSD.toFixed(4)}`);
 
-    // Arbitrage threshold (adjust as needed)
-    const ARBITRAGE_THRESHOLD = 0.1; // 0.1%
+    // Determine arbitrage direction
+    const buyChain = avalanchePrice.usdt < sonicPrice.usdt ? 'avalanche' : 'sonic';
+    const sellChain = avalanchePrice.usdt < sonicPrice.usdt ? 'sonic' : 'avalanche';
+    const buyPriceUSDCperUSDT = Math.min(avalanchePrice.usdt, sonicPrice.usdt);
+    const sellPriceUSDCperUSDT = Math.max(avalanchePrice.usdt, sonicPrice.usdt);
 
-    if (percentageDiff > ARBITRAGE_THRESHOLD) {
-      log(`🚨 ARBITRAGE OPPORTUNITY FOUND! ${percentageDiff.toFixed(4)}% difference`, 'info');
+    // Check both arbitrage scenarios: USDC-targeted and USDT-targeted
+    await checkUSDCTargetedArbitrage(buyChain, sellChain, buyPriceUSDCperUSDT, sellPriceUSDCperUSDT, totalGasUSD);
+    await checkUSDTTargetedArbitrage(buyChain, sellChain, buyPriceUSDCperUSDT, sellPriceUSDCperUSDT, totalGasUSD);
 
-      // Determine arbitrage direction
-      const buyChain = avalanchePrice.usdt < sonicPrice.usdt ? 'avalanche' : 'sonic';
-      const sellChain = avalanchePrice.usdt < sonicPrice.usdt ? 'sonic' : 'avalanche';
-      const buyPriceUSDCperUSDT = Math.min(avalanchePrice.usdt, sonicPrice.usdt);
-      const sellPriceUSDCperUSDT = Math.max(avalanchePrice.usdt, sonicPrice.usdt);
-
-      // Check both arbitrage scenarios: USDC-targeted and USDT-targeted
-      await checkUSDCTargetedArbitrage(buyChain, sellChain, buyPriceUSDCperUSDT, sellPriceUSDCperUSDT, totalGasUSD);
-      await checkUSDTTargetedArbitrage(buyChain, sellChain, buyPriceUSDCperUSDT, sellPriceUSDCperUSDT, totalGasUSD);
-
-      // Log updated balances after arbitrage checks
-      logBalances();
-    }
+    // Log updated balances after arbitrage checks
+    logBalances();
 
   } catch (error) {
     log(`Failed to check arbitrage opportunities: ${error}`, 'error');
@@ -471,12 +464,13 @@ async function checkUSDCTargetedArbitrage(
   const netProfitUSD = grossProfitUSDC - totalGasUSD; // Convert to USD for comparison
 
   log(`USDC-targeted arbitrage: Start ${tradeAmountUSDC} USDC → End ${usdcReceived.toFixed(4)} USDC = ${grossProfitUSDC.toFixed(4)} USDC profit`);
-  log(`Net profit after gas: $${netProfitUSD.toFixed(4)}`);
+  log(`Net profit after gas: $${netProfitUSD.toFixed(4)}, Threshold: $${CONFIG.PROFIT_THRESHOLD} USD`);
 
-  if (netProfitUSD > 0) {
+  if (netProfitUSD > CONFIG.PROFIT_THRESHOLD) {
+    log(`🚨 ARBITRAGE OPPORTUNITY FOUND! ${netProfitUSD.toFixed(4)}% difference`, 'info');
     await executeUSDCTargetedArbitrage(buyChain, sellChain, buyPriceUSDCperUSDT, sellPriceUSDCperUSDT, tradeAmountUSDC);
   } else {
-    log(`USDC-targeted arbitrage not profitable after gas costs (Net: $${netProfitUSD.toFixed(4)})`, 'warn');
+    log(`USDC-targeted arbitrage not profitable after gas costs (Net: $${netProfitUSD.toFixed(4)}, Threshold: $${CONFIG.PROFIT_THRESHOLD})`, 'warn');
   }
 }
 
@@ -523,18 +517,20 @@ async function checkUSDTTargetedArbitrage(
   const netProfitUSD = grossProfitUSDT - gasCostUSD;
 
   log(`USDT-targeted arbitrage: Start ${tradeAmountUSDT} USDT → End ${usdtReceived.toFixed(4)} USDT = ${grossProfitUSDT.toFixed(4)} USDT profit`);
-  log(`Net profit after gas: $${netProfitUSD.toFixed(4)}`);
+  log(`Net profit after gas: $${netProfitUSD.toFixed(4)}, Threshold: $${CONFIG.PROFIT_THRESHOLD} USD`);
 
-  if (netProfitUSD > 0) {
+  if (netProfitUSD > CONFIG.PROFIT_THRESHOLD) {
+    log(`🚨 ARBITRAGE OPPORTUNITY FOUND! ${netProfitUSD.toFixed(4)}% difference`, 'info');
     await executeUSDTTargetedArbitrage(buyChain, sellChain, buyPriceUSDCperUSDT, sellPriceUSDCperUSDT, tradeAmountUSDT);
   } else {
-    log(`USDT-targeted arbitrage not profitable after gas costs (Net: $${netProfitUSD.toFixed(4)})`, 'warn');
+    log(`USDT-targeted arbitrage not profitable after gas costs (Net: $${netProfitUSD.toFixed(4)}, Threshold: $${CONFIG.PROFIT_THRESHOLD})`, 'warn');
   }
 }
 
 // Continuous price monitoring function
 export async function monitorPrices(): Promise<void> {
   log('Starting price monitoring...');
+  log(`💰 Profit threshold set to: $${CONFIG.PROFIT_THRESHOLD}`);
 
   // Log initial balances
   log('🚀 Initial Portfolio State:');

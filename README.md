@@ -47,7 +47,14 @@ Create a `.env` file in the root directory:
 
 ```bash
 ALCHEMY_API_KEY=your_alchemy_api_key_here
+PROFIT_THRESHOLD=0.5
 ```
+
+**Environment Variables:**
+- `ALCHEMY_API_KEY`: Your Alchemy API key for RPC endpoints
+- `PROFIT_THRESHOLD`: Minimum net profit in USD required to execute trades (default: 0)
+
+**Important:** The application loads environment variables before importing other modules to ensure they are available throughout the application. Make sure your `.env` file is in the root directory of the project.
 
 ### Free RPC Providers
 
@@ -145,6 +152,23 @@ const CONFIG = {
   // ... rest of config
 };
 ```
+
+### Configuring Profit Threshold
+
+Set the minimum profit required to execute trades by setting the `PROFIT_THRESHOLD` environment variable:
+
+```bash
+# Execute trades only if net profit is greater than $1.00
+PROFIT_THRESHOLD=1.0
+
+# Execute trades only if net profit is greater than $0.50
+PROFIT_THRESHOLD=0.5
+
+# Execute trades with any positive profit (default behavior)
+PROFIT_THRESHOLD=0
+```
+
+This helps filter out trades that are profitable but may not be worth executing due to small profit margins.
 
 ## Error Handling
 

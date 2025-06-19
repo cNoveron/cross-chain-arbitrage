@@ -1,9 +1,10 @@
 import { config } from 'dotenv';
+
+// Load environment variables FIRST, before any other imports
+config();
+
 import { log, setupGracefulShutdown } from './utils';
 import { monitorChains, setupWebSocketMonitoring, monitorPrices } from './arbitrage';
-
-// Load environment variables
-config();
 
 // Main function
 async function main(): Promise<void> {

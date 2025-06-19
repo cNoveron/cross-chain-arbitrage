@@ -18,6 +18,9 @@ const CONFIG = {
   // Retry configuration
   MAX_RETRIES: 3,
   RETRY_DELAY: 1000, // 1 second
+
+  // Trading configuration
+  PROFIT_THRESHOLD: parseFloat(process.env.PROFIT_THRESHOLD || '0'), // Minimum net profit in USD to execute trades
 };
 
 // Sonic chain configuration
