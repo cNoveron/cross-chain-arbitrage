@@ -7,7 +7,9 @@ import {
   getAllChainData,
   getAllPoolPrices,
   calculateTotalArbitrageGasCost,
-  getGasCostInUSD
+  getGasCostInUSD,
+  getPharaohPoolPrice,
+  getShadowPoolPrice
 } from './getters';
 
 // Paper trading balance tracking
@@ -359,6 +361,9 @@ async function checkArbitrageOpportunities(): Promise<void> {
     // Log current balances before checking arbitrage
     logBalances();
 
+    // Determine which token we're targeting based on current balances
+    const { targetToken } = determineTargetToken();
+
     // Price comparison - USDT price denominated in USDC (how many USDC per 1 USDT)
     const priceDiff = Math.abs(avalanchePrice.usdt - sonicPrice.usdt);
     const percentageDiff = (priceDiff / Math.min(avalanchePrice.usdt, sonicPrice.usdt)) * 100;
@@ -380,9 +385,14 @@ async function checkArbitrageOpportunities(): Promise<void> {
     const buyPriceUSDCperUSDT = Math.min(avalanchePrice.usdt, sonicPrice.usdt);
     const sellPriceUSDCperUSDT = Math.max(avalanchePrice.usdt, sonicPrice.usdt);
 
-    // Check both arbitrage scenarios: USDC-targeted and USDT-targeted
-    await checkUSDCTargetedArbitrage(buyChain, sellChain, buyPriceUSDCperUSDT, sellPriceUSDCperUSDT, totalGasUSD);
-    await checkUSDTTargetedArbitrage(buyChain, sellChain, buyPriceUSDCperUSDT, sellPriceUSDCperUSDT, totalGasUSD);
+    // Check arbitrage based on target token (the one we're running low on)
+    if (targetToken === 'USDC') {
+      log(`🎯 Checking USDC-targeted arbitrage (we're running low on USDC)`);
+      await checkUSDCTargetedArbitrage(buyChain, sellChain, buyPriceUSDCperUSDT, sellPriceUSDCperUSDT, totalGasUSD);
+    } else {
+      log(`🎯 Checking USDT-targeted arbitrage (we're running low on USDT)`);
+      await checkUSDTTargetedArbitrage(buyChain, sellChain, buyPriceUSDCperUSDT, sellPriceUSDCperUSDT, totalGasUSD);
+    }
 
     // Log updated balances after arbitrage checks
     logBalances();
@@ -425,6 +435,46 @@ function logBalances(): void {
   log(`    Win Rate: ${stats.winRate.toFixed(1)}%`);
 
   log('─'.repeat(50));
+}
+
+// Determine which token we're running low on across all chains
+function determineTargetToken(): { targetToken: 'USDC' | 'USDT'; targetIndex: number } {
+  const avalancheBalance = getPaperBalance('avalanche');
+  const sonicBalance = getPaperBalance('sonic');
+
+  // Calculate combined balances across all chains
+  const totalUSDC = avalancheBalance.usdc + sonicBalance.usdc;
+  const totalUSDT = avalancheBalance.usdt + sonicBalance.usdt;
+
+  log(`📊 Combined balances: USDC=${totalUSDC.toFixed(2)}, USDT=${totalUSDT.toFixed(2)}`);
+
+  // Determine which token we have less of (the one we're running out of)
+  if (totalUSDC <= totalUSDT) {
+    log(`🎯 Target token determined: USDC (${totalUSDC.toFixed(2)} vs ${totalUSDT.toFixed(2)} USDT)`);
+    return { targetToken: 'USDC', targetIndex: 0 };
+  } else {
+    log(`🎯 Target token determined: USDT (${totalUSDT.toFixed(2)} vs ${totalUSDC.toFixed(2)} USDC)`);
+    return { targetToken: 'USDT', targetIndex: 1 };
+  }
+}
+
+// Get pool prices for the target token (the one we're running low on)
+async function getTargetTokenPrices(): Promise<void> {
+  const { targetToken, targetIndex } = determineTargetToken();
+
+  try {
+    // Pool addresses
+    const PHARAOH_POOL_AVALANCHE = '0x184b487c7e811f1d9734d49e78293e00b3768079';
+    const SHADOW_POOL_SONIC = '0x9053fe060f412ad5677f934f89e07524343ee8e7';
+
+    // Get pool prices targeting the token we're running low on
+    await getPharaohPoolPrice(clients.avalanche, 'avalanche', PHARAOH_POOL_AVALANCHE, targetIndex);
+    await getShadowPoolPrice(clients.sonic, 'sonic', SHADOW_POOL_SONIC, targetIndex);
+
+    log(`✅ Completed ${targetToken} price collection`);
+  } catch (error) {
+    log(`Failed to get ${targetToken} prices: ${error}`, 'error');
+  }
 }
 
 // Check USDC-targeted arbitrage: Start with USDC, end with more USDC
@@ -538,8 +588,8 @@ export async function monitorPrices(): Promise<void> {
 
   while (true) {
     try {
-      // Get all pool prices
-      await getAllPoolPrices();
+      // Determine which token we're running low on and get its prices
+      await getTargetTokenPrices();
 
       // Get all chain data (including gas costs)
       await getAllChainData('avalanche');
