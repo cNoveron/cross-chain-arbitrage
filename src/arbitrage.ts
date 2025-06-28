@@ -388,13 +388,12 @@ async function checkArbitrageOpportunities(): Promise<void> {
     const sellPriceUSDCperUSDT = Math.max(avalanchePrice.tokens1PerToken0, sonicPrice.tokens1PerToken0);
 
     // Check arbitrage based on target token (the one we're running low on)
-
     const targetToken = determineTargetToken(poolMetadata);
-    if (targetToken === 'USDC') {
-      log(`🎯 Checking USDC-targeted arbitrage (we're running low on USDC)`);
+    if (targetToken === 'USDT') {
+      log(`🎯 Checking USDC-targeted arbitrage (we're running low on USDT, so we'll use USDC to buy USDT)`);
       await checkUSDCTargetedArbitrage(buyChain, sellChain, buyPriceUSDCperUSDT, sellPriceUSDCperUSDT, totalGasUSD);
     } else {
-      log(`🎯 Checking USDT-targeted arbitrage (we're running low on USDT)`);
+      log(`🎯 Checking USDT-targeted arbitrage (we're running low on USDC, so we'll use USDT to buy USDC)`);
       await checkUSDTTargetedArbitrage(buyChain, sellChain, buyPriceUSDCperUSDT, sellPriceUSDCperUSDT, totalGasUSD);
     }
 
