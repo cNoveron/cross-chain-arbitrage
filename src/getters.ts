@@ -255,7 +255,7 @@ export async function getPharaohPoolPrice(
     }
 
     // Determine which index the target token is in this pool
-    const targetTokenIndex = metadata.token0.symbol === targetToken ? 0 : 1;
+    const targetTokenIndex = metadata.token0.symbol.toLowerCase() === targetToken.toLowerCase() ? 0 : 1;
     log(`📍 ${targetToken} is token${targetTokenIndex} in ${chainName} pool`);
 
     // Implementation using Uniswap V3 ABI
@@ -304,7 +304,7 @@ export async function getShadowPoolPrice(
     }
 
     // Determine which index the target token is in this pool
-    const targetTokenIndex = metadata.token0.symbol === targetToken ? 0 : 1;
+    const targetTokenIndex = metadata.token0.symbol.toLowerCase() === targetToken.toLowerCase() ? 0 : 1;
     log(`📍 ${targetToken} is token${targetTokenIndex} in ${chainName} pool`);
 
     // Implementation using Uniswap V3 ABI

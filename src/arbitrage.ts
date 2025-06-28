@@ -365,7 +365,6 @@ async function checkArbitrageOpportunities(): Promise<void> {
 
     // Get pool metadata and determine which token we're targeting based on current balances
     const poolMetadata = await getAllPoolMetadata();
-    console.log(poolMetadata)
 
     // Price comparison - USDT price denominated in USDC (how many USDC per 1 USDT)
     const priceDiff = Math.abs(avalanchePrice.tokens1PerToken0 - sonicPrice.tokens1PerToken0);
