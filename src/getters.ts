@@ -24,11 +24,12 @@ const CHAINLINK_PRICE_FEED_ABI = parseAbi([
   'function decimals() external view returns (uint8)',
 ]);
 
-// Minimal ABI for pool contracts (getReserves function)
+// Minimal ABI for Uniswap V3 pool contracts
 const POOL_ABI = parseAbi([
-  'function getReserves() external view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)',
+  'function slot0() external view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, uint8 feeProtocol, bool unlocked)',
   'function token0() external view returns (address)',
   'function token1() external view returns (address)',
+  'function fee() external view returns (uint24)',
 ]);
 
 // Minimal ABI for ERC20 tokens (symbol function)
@@ -225,12 +226,12 @@ export async function getPharaohPoolPrice(
     // Pharaoh.exchange CL pool price fetching logic
     log(`Fetching Pharaoh pool price for ${chainName} at ${poolAddress} (targeting token index ${targetTokenIndex})`);
 
-    // Implementation using minimal ABI
+    // Implementation using Uniswap V3 ABI
     const poolContract = getContract({ address: poolAddress as `0x${string}`, abi: POOL_ABI, client });
 
-    // Get reserves and token addresses
-    const [reserves, token0Address, token1Address] = await Promise.all([
-      poolContract.read.getReserves(),
+    // Get slot0 data and token addresses
+    const [slot0Data, token0Address, token1Address] = await Promise.all([
+      poolContract.read.slot0(),
       poolContract.read.token0(),
       poolContract.read.token1(),
     ]);
@@ -244,24 +245,25 @@ export async function getPharaohPoolPrice(
       token1Contract.read.symbol(),
     ]);
 
-    const token0Reserve = Number(reserves[0]);
-    const token1Reserve = Number(reserves[1]);
+    // Calculate price from sqrtPriceX96 (price of token1 in terms of token0)
+    const sqrtPriceX96 = slot0Data[0];
+    const price = calculatePriceFromSqrtPriceX96(sqrtPriceX96);
 
     // Calculate price based on target token index
     // If targeting token1 (index 1), calculate token0Reserve/token1Reserve
     // If targeting token0 (index 0), calculate token1Reserve/token0Reserve
-    const price = targetTokenIndex === 1 ? token0Reserve / token1Reserve : token1Reserve / token0Reserve;
+    const finalPrice = targetTokenIndex === 1 ? 1 / price : price;
 
     // Store the price
     lastPrices[chainName] = {
-      usdc: targetTokenIndex === 1 ? price : 1.0,
-      usdt: targetTokenIndex === 1 ? 1.0 : price,
+      usdc: targetTokenIndex === 1 ? finalPrice : 1.0,
+      usdt: targetTokenIndex === 1 ? 1.0 : finalPrice,
       timestamp: Date.now()
     };
 
     const baseTokenSymbol = targetTokenIndex === 1 ? token0Symbol : token1Symbol;
     const targetTokenSymbol = targetTokenIndex === 1 ? token1Symbol : token0Symbol;
-    log(`${chainName} Pharaoh pool price: ${baseTokenSymbol}=${price.toFixed(6)}, ${targetTokenSymbol}=1.0`);
+    log(`${chainName} Pharaoh pool price: ${baseTokenSymbol}=${finalPrice.toFixed(6)}, ${targetTokenSymbol}=1.0`);
 
   } catch (error) {
     log(`Failed to get ${chainName} Pharaoh pool price: ${error}`, 'error');
@@ -278,12 +280,12 @@ export async function getShadowPoolPrice(
     // Shadow CL pool price fetching logic
     log(`Fetching Shadow pool price for ${chainName} at ${poolAddress} (targeting token index ${targetTokenIndex})`);
 
-    // Implementation using minimal ABI
+    // Implementation using Uniswap V3 ABI
     const poolContract = getContract({ address: poolAddress as `0x${string}`, abi: POOL_ABI, client });
 
-    // Get reserves and token addresses
-    const [reserves, token0Address, token1Address] = await Promise.all([
-      poolContract.read.getReserves(),
+    // Get slot0 data and token addresses
+    const [slot0Data, token0Address, token1Address] = await Promise.all([
+      poolContract.read.slot0(),
       poolContract.read.token0(),
       poolContract.read.token1(),
     ]);
@@ -297,28 +299,38 @@ export async function getShadowPoolPrice(
       token1Contract.read.symbol(),
     ]);
 
-    const token0Reserve = Number(reserves[0]);
-    const token1Reserve = Number(reserves[1]);
+    // Calculate price from sqrtPriceX96 (price of token1 in terms of token0)
+    const sqrtPriceX96 = slot0Data[0];
+    const price = calculatePriceFromSqrtPriceX96(sqrtPriceX96);
 
     // Calculate price based on target token index
     // If targeting token1 (index 1), calculate token0Reserve/token1Reserve
     // If targeting token0 (index 0), calculate token1Reserve/token0Reserve
-    const price = targetTokenIndex === 1 ? token0Reserve / token1Reserve : token1Reserve / token0Reserve;
+    const finalPrice = targetTokenIndex === 1 ? 1 / price : price;
 
     // Store the price
     lastPrices[chainName] = {
-      usdc: targetTokenIndex === 1 ? price : 1.0,
-      usdt: targetTokenIndex === 1 ? 1.0 : price,
+      usdc: targetTokenIndex === 1 ? finalPrice : 1.0,
+      usdt: targetTokenIndex === 1 ? 1.0 : finalPrice,
       timestamp: Date.now()
     };
 
     const baseTokenSymbol = targetTokenIndex === 1 ? token0Symbol : token1Symbol;
     const targetTokenSymbol = targetTokenIndex === 1 ? token1Symbol : token0Symbol;
-    log(`${chainName} Shadow pool price: ${baseTokenSymbol}=${price.toFixed(6)}, ${targetTokenSymbol}=1.0`);
+    log(`${chainName} Shadow pool price: ${baseTokenSymbol}=${finalPrice.toFixed(6)}, ${targetTokenSymbol}=1.0`);
 
   } catch (error) {
     log(`Failed to get ${chainName} Shadow pool price: ${error}`, 'error');
   }
+}
+
+// Helper function to calculate price from sqrtPriceX96 (Uniswap V3)
+function calculatePriceFromSqrtPriceX96(sqrtPriceX96: bigint, token0Decimals: number = 6, token1Decimals: number = 6): number {
+  // Convert sqrtPriceX96 to price
+  // price = (sqrtPriceX96 / 2^96)^2 * 10^(token1Decimals - token0Decimals)
+  const Q96 = 2n ** 96n;
+  const price = Number((sqrtPriceX96 * sqrtPriceX96 * (10n ** BigInt(token1Decimals))) / (Q96 * Q96 * (10n ** BigInt(token0Decimals))));
+  return price;
 }
 
 // Get all data for a specific chain
