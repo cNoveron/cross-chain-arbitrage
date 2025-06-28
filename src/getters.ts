@@ -329,7 +329,7 @@ function calculatePriceFromSqrtPriceX96(sqrtPriceX96: bigint, token0Decimals: nu
   // Convert sqrtPriceX96 to price
   // price = (sqrtPriceX96 / 2^96)^2 * 10^(token1Decimals - token0Decimals)
   const Q96 = 2n ** 96n;
-  const price = Number((sqrtPriceX96 * sqrtPriceX96 * (10n ** BigInt(token1Decimals))) / (Q96 * Q96 * (10n ** BigInt(token0Decimals))));
+  const price = Number(sqrtPriceX96 * sqrtPriceX96 * (10n ** BigInt(token1Decimals))) / Number(Q96 * Q96 * (10n ** BigInt(token0Decimals)));
   return price;
 }
 
