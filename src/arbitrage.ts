@@ -9,7 +9,9 @@ import {
   calculateTotalArbitrageGasCost,
   getGasCostInUSD,
   getPharaohPoolPrice,
-  getShadowPoolPrice
+  getShadowPoolPrice,
+  getAllPoolMetadata,
+  type PoolMetadata
 } from './getters';
 
 // Paper trading balance tracking
@@ -361,8 +363,9 @@ async function checkArbitrageOpportunities(): Promise<void> {
     // Log current balances before checking arbitrage
     logBalances();
 
-    // Determine which token we're targeting based on current balances
-    const { targetToken } = determineTargetToken();
+    // Get pool metadata and determine which token we're targeting based on current balances
+    const poolMetadata = await getAllPoolMetadata();
+    console.log(poolMetadata)
 
     // Price comparison - USDT price denominated in USDC (how many USDC per 1 USDT)
     const priceDiff = Math.abs(avalanchePrice.tokens1PerToken0 - sonicPrice.tokens1PerToken0);
@@ -386,6 +389,8 @@ async function checkArbitrageOpportunities(): Promise<void> {
     const sellPriceUSDCperUSDT = Math.max(avalanchePrice.tokens1PerToken0, sonicPrice.tokens1PerToken0);
 
     // Check arbitrage based on target token (the one we're running low on)
+
+    const targetToken = determineTargetToken(poolMetadata);
     if (targetToken === 'USDC') {
       log(`🎯 Checking USDC-targeted arbitrage (we're running low on USDC)`);
       await checkUSDCTargetedArbitrage(buyChain, sellChain, buyPriceUSDCperUSDT, sellPriceUSDCperUSDT, totalGasUSD);
@@ -438,7 +443,7 @@ function logBalances(): void {
 }
 
 // Determine which token we're running low on across all chains
-function determineTargetToken(): { targetToken: 'USDC' | 'USDT'; targetIndex: number } {
+function determineTargetToken(poolMetadata: Record<string, PoolMetadata>): 'USDC' | 'USDT' {
   const avalancheBalance = getPaperBalance('avalanche');
   const sonicBalance = getPaperBalance('sonic');
 
@@ -451,29 +456,35 @@ function determineTargetToken(): { targetToken: 'USDC' | 'USDT'; targetIndex: nu
   // Determine which token we have less of (the one we're running out of)
   if (totalUSDC <= totalUSDT) {
     log(`🎯 Target token determined: USDC (${totalUSDC.toFixed(2)} vs ${totalUSDT.toFixed(2)} USDT)`);
-    return { targetToken: 'USDC', targetIndex: 0 };
+    return 'USDC';
   } else {
     log(`🎯 Target token determined: USDT (${totalUSDT.toFixed(2)} vs ${totalUSDC.toFixed(2)} USDC)`);
-    return { targetToken: 'USDT', targetIndex: 1 };
+    return 'USDT';
   }
 }
 
 // Get pool prices for the target token (the one we're running low on)
 async function getTargetTokenPrices(): Promise<void> {
-  const { targetToken, targetIndex } = determineTargetToken();
+  let targetToken: string = '';
 
   try {
+    // Get pool metadata first
+    const poolMetadata = await getAllPoolMetadata();
+
+    // Determine target token based on pool metadata
+    targetToken = determineTargetToken(poolMetadata);
+
     // Pool addresses
     const PHARAOH_POOL_AVALANCHE = '0x184b487c7e811f1d9734d49e78293e00b3768079';
     const SHADOW_POOL_SONIC = '0x9053fe060f412ad5677f934f89e07524343ee8e7';
 
     // Get pool prices targeting the token we're running low on
-    await getPharaohPoolPrice(clients.avalanche, 'avalanche', PHARAOH_POOL_AVALANCHE, targetIndex);
-    await getShadowPoolPrice(clients.sonic, 'sonic', SHADOW_POOL_SONIC, targetIndex);
+    await getPharaohPoolPrice(clients.avalanche, 'avalanche', PHARAOH_POOL_AVALANCHE, targetToken, poolMetadata);
+    await getShadowPoolPrice(clients.sonic, 'sonic', SHADOW_POOL_SONIC, targetToken, poolMetadata);
 
     log(`✅ Completed ${targetToken} price collection`);
   } catch (error) {
-    log(`Failed to get ${targetToken} prices: ${error}`, 'error');
+    log(`Failed to get ${targetToken || 'target token'} prices: ${error}`, 'error');
   }
 }
 
