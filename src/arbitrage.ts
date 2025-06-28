@@ -365,10 +365,10 @@ async function checkArbitrageOpportunities(): Promise<void> {
     const { targetToken } = determineTargetToken();
 
     // Price comparison - USDT price denominated in USDC (how many USDC per 1 USDT)
-    const priceDiff = Math.abs(avalanchePrice.usdt - sonicPrice.usdt);
-    const percentageDiff = (priceDiff / Math.min(avalanchePrice.usdt, sonicPrice.usdt)) * 100;
+    const priceDiff = Math.abs(avalanchePrice.tokens1PerToken0 - sonicPrice.tokens1PerToken0);
+    const percentageDiff = (priceDiff / Math.min(avalanchePrice.tokens1PerToken0, sonicPrice.tokens1PerToken0)) * 100;
 
-    log(`Price comparison: Avalanche USDT=${avalanchePrice.usdt.toFixed(6)} USDC/USDT, Sonic USDT=${sonicPrice.usdt.toFixed(6)} USDC/USDT, Diff=${percentageDiff.toFixed(4)}%`);
+    log(`Price comparison: Avalanche USDT=${avalanchePrice.tokens1PerToken0.toFixed(6)} USDC/USDT, Sonic USDT=${sonicPrice.tokens1PerToken0.toFixed(6)} USDC/USDT, Diff=${percentageDiff.toFixed(4)}%`);
 
     // Calculate gas costs in USD
     const [avalancheGasUSD, sonicGasUSD] = await Promise.all([
@@ -380,10 +380,10 @@ async function checkArbitrageOpportunities(): Promise<void> {
     log(`Gas costs: Avalanche $${avalancheGasUSD.toFixed(4)}, Sonic $${sonicGasUSD.toFixed(4)}, Total $${totalGasUSD.toFixed(4)}`);
 
     // Determine arbitrage direction
-    const buyChain = avalanchePrice.usdt < sonicPrice.usdt ? 'avalanche' : 'sonic';
-    const sellChain = avalanchePrice.usdt < sonicPrice.usdt ? 'sonic' : 'avalanche';
-    const buyPriceUSDCperUSDT = Math.min(avalanchePrice.usdt, sonicPrice.usdt);
-    const sellPriceUSDCperUSDT = Math.max(avalanchePrice.usdt, sonicPrice.usdt);
+    const buyChain = avalanchePrice.tokens1PerToken0 < sonicPrice.tokens1PerToken0 ? 'avalanche' : 'sonic';
+    const sellChain = avalanchePrice.tokens1PerToken0 < sonicPrice.tokens1PerToken0 ? 'sonic' : 'avalanche';
+    const buyPriceUSDCperUSDT = Math.min(avalanchePrice.tokens1PerToken0, sonicPrice.tokens1PerToken0);
+    const sellPriceUSDCperUSDT = Math.max(avalanchePrice.tokens1PerToken0, sonicPrice.tokens1PerToken0);
 
     // Check arbitrage based on target token (the one we're running low on)
     if (targetToken === 'USDC') {

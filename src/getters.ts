@@ -5,8 +5,8 @@ import { log, withRetry } from './utils';
 
 // Price storage for each chain
 export const lastPrices: Record<string, {
-  usdc: number;
-  usdt: number;
+  tokens0PerToken1: number;
+  tokens1PerToken0: number;
   timestamp: number
 }> = {};
 
@@ -249,21 +249,18 @@ export async function getPharaohPoolPrice(
     const sqrtPriceX96 = slot0Data[0];
     const price = calculatePriceFromSqrtPriceX96(sqrtPriceX96);
 
-    // Calculate price based on target token index
-    // If targeting token1 (index 1), calculate token0Reserve/token1Reserve
-    // If targeting token0 (index 0), calculate token1Reserve/token0Reserve
-    const finalPrice = targetTokenIndex === 1 ? 1 / price : price;
-
-    // Store the price
-    lastPrices[chainName] = {
-      usdc: targetTokenIndex === 1 ? finalPrice : 1.0,
-      usdt: targetTokenIndex === 1 ? 1.0 : finalPrice,
+    // Store the prices
+    const { tokens0PerToken1, tokens1PerToken0 } = lastPrices[chainName] = {
+      tokens0PerToken1: 1 / Number(price), // tokens0 per token1 (USDCs per USDT, the ticker being: USDT/USDC)
+      tokens1PerToken0: Number(price),     // tokens1 per token0 (USDTs per USDC, the ticker being: USDC/USDT)
       timestamp: Date.now()
     };
 
-    const baseTokenSymbol = targetTokenIndex === 1 ? token0Symbol : token1Symbol;
+    const targetTokenPrice = targetTokenIndex === 1 ? tokens0PerToken1 : tokens1PerToken0;
+
+    const quoteTokenSymbol = targetTokenIndex === 1 ? token0Symbol : token1Symbol;
     const targetTokenSymbol = targetTokenIndex === 1 ? token1Symbol : token0Symbol;
-    log(`${chainName} Pharaoh pool price: ${baseTokenSymbol}=${finalPrice.toFixed(6)}, ${targetTokenSymbol}=1.0`);
+    log(`${chainName} Pharaoh pool price: ${targetTokenPrice.toFixed(6)} ${quoteTokenSymbol}s per ${targetTokenSymbol}`);
 
   } catch (error) {
     log(`Failed to get ${chainName} Pharaoh pool price: ${error}`, 'error');
@@ -303,21 +300,18 @@ export async function getShadowPoolPrice(
     const sqrtPriceX96 = slot0Data[0];
     const price = calculatePriceFromSqrtPriceX96(sqrtPriceX96);
 
-    // Calculate price based on target token index
-    // If targeting token1 (index 1), calculate token0Reserve/token1Reserve
-    // If targeting token0 (index 0), calculate token1Reserve/token0Reserve
-    const finalPrice = targetTokenIndex === 1 ? 1 / price : price;
-
-    // Store the price
-    lastPrices[chainName] = {
-      usdc: targetTokenIndex === 1 ? finalPrice : 1.0,
-      usdt: targetTokenIndex === 1 ? 1.0 : finalPrice,
+    // Store the prices
+    const { tokens0PerToken1, tokens1PerToken0 } = lastPrices[chainName] = {
+      tokens0PerToken1: 1 / Number(price), // tokens0 per token1 (USDCs per USDT, the ticker being: USDT/USDC)
+      tokens1PerToken0: Number(price),     // tokens1 per token0 (USDTs per USDC, the ticker being: USDC/USDT)
       timestamp: Date.now()
     };
 
-    const baseTokenSymbol = targetTokenIndex === 1 ? token0Symbol : token1Symbol;
+    const targetTokenPrice = targetTokenIndex === 1 ? tokens0PerToken1 : tokens1PerToken0;
+
+    const quoteTokenSymbol = targetTokenIndex === 1 ? token0Symbol : token1Symbol;
     const targetTokenSymbol = targetTokenIndex === 1 ? token1Symbol : token0Symbol;
-    log(`${chainName} Shadow pool price: ${baseTokenSymbol}=${finalPrice.toFixed(6)}, ${targetTokenSymbol}=1.0`);
+    log(`${chainName} Shadow pool price: ${targetTokenPrice.toFixed(6)} ${quoteTokenSymbol}s per ${targetTokenSymbol}`);
 
   } catch (error) {
     log(`Failed to get ${chainName} Shadow pool price: ${error}`, 'error');
