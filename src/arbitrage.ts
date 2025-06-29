@@ -5,7 +5,6 @@ import {
   lastPrices,
   gasCosts,
   getAllChainData,
-  getAllPoolPrices,
   calculateTotalArbitrageGasCost,
   getGasCostInUSD,
   getPharaohPoolPrice,
@@ -353,6 +352,26 @@ export async function executeArbitrage(
 // Check for arbitrage opportunities between the pools
 async function checkArbitrageOpportunities(): Promise<void> {
   try {
+    // Get pool metadata first
+    const poolMetadata = await getAllPoolMetadata();
+
+    // Determine which token we're targeting based on current balances
+    const targetToken = determineTargetToken(poolMetadata);
+
+    // Determine which index the target token is in each pool
+    const avalancheTargetIndex = poolMetadata['avalanche'].token0.symbol.toLowerCase() === targetToken.toLowerCase() ? 0 : 1;
+    const sonicTargetIndex = poolMetadata['sonic'].token0.symbol.toLowerCase() === targetToken.toLowerCase() ? 0 : 1;
+
+    log(`📍 ${targetToken} is token${avalancheTargetIndex} in avalanche pool, token${sonicTargetIndex} in sonic pool`);
+
+    // Pool addresses
+    const PHARAOH_POOL_AVALANCHE = '0x184b487c7e811f1d9734d49e78293e00b3768079';
+    const SHADOW_POOL_SONIC = '0x9053fe060f412ad5677f934f89e07524343ee8e7';
+
+    // Get pool prices targeting the token we're running low on
+    await getPharaohPoolPrice(clients.avalanche, 'avalanche', PHARAOH_POOL_AVALANCHE, targetToken, avalancheTargetIndex, poolMetadata);
+    await getShadowPoolPrice(clients.sonic, 'sonic', SHADOW_POOL_SONIC, targetToken, sonicTargetIndex, poolMetadata);
+
     const avalanchePrice = lastPrices['avalanche'];
     const sonicPrice = lastPrices['sonic'];
 
@@ -363,15 +382,6 @@ async function checkArbitrageOpportunities(): Promise<void> {
     // Log current balances before checking arbitrage
     logBalances();
 
-    // Get pool metadata and determine which token we're targeting based on current balances
-    const poolMetadata = await getAllPoolMetadata();
-
-    // Price comparison - USDT price denominated in USDC (how many USDC per 1 USDT)
-    const priceDiff = Math.abs(avalanchePrice.tokens1PerToken0 - sonicPrice.tokens1PerToken0);
-    const percentageDiff = (priceDiff / Math.min(avalanchePrice.tokens1PerToken0, sonicPrice.tokens1PerToken0)) * 100;
-
-    log(`Price comparison: Avalanche USDT=${avalanchePrice.tokens1PerToken0.toFixed(6)} USDC/USDT, Sonic USDT=${sonicPrice.tokens1PerToken0.toFixed(6)} USDC/USDT, Diff=${percentageDiff.toFixed(4)}%`);
-
     // Calculate gas costs in USD
     const [avalancheGasUSD, sonicGasUSD] = await Promise.all([
       getGasCostInUSD('avalanche'),
@@ -381,18 +391,48 @@ async function checkArbitrageOpportunities(): Promise<void> {
 
     log(`Gas costs: Avalanche $${avalancheGasUSD.toFixed(4)}, Sonic $${sonicGasUSD.toFixed(4)}, Total $${totalGasUSD.toFixed(4)}`);
 
-    // Determine arbitrage direction
-    const buyChain = avalanchePrice.tokens1PerToken0 < sonicPrice.tokens1PerToken0 ? 'avalanche' : 'sonic';
-    const sellChain = avalanchePrice.tokens1PerToken0 < sonicPrice.tokens1PerToken0 ? 'sonic' : 'avalanche';
-    const buyPriceUSDCperUSDT = Math.min(avalanchePrice.tokens1PerToken0, sonicPrice.tokens1PerToken0);
-    const sellPriceUSDCperUSDT = Math.max(avalanchePrice.tokens1PerToken0, sonicPrice.tokens1PerToken0);
+    // Price comparison and arbitrage direction - use the appropriate logic based on target token
+    let priceDiff: number;
+    let percentageDiff: number;
+    let buyChain: string;
+    let sellChain: string;
+    let buyPriceUSDCperUSDT: number;
+    let sellPriceUSDCperUSDT: number;
 
-    // Check arbitrage based on target token (the one we're running low on)
-    const targetToken = determineTargetToken(poolMetadata);
     if (targetToken === 'USDT') {
+      // When targeting USDT, we're doing USDC-targeted arbitrage
+      // Use the correct price direction based on each chain's token index
+      const avalanchePriceUSDCperUSDT = avalancheTargetIndex === 1 ? avalanchePrice.tokens0PerToken1 : avalanchePrice.tokens1PerToken0;
+      const sonicPriceUSDCperUSDT = sonicTargetIndex === 1 ? sonicPrice.tokens0PerToken1 : sonicPrice.tokens1PerToken0;
+
+      priceDiff = Math.abs(avalanchePriceUSDCperUSDT - sonicPriceUSDCperUSDT);
+      percentageDiff = (priceDiff / Math.min(avalanchePriceUSDCperUSDT, sonicPriceUSDCperUSDT)) * 100;
+      log(`Price comparison: Avalanche USDT=${avalanchePriceUSDCperUSDT.toFixed(6)} USDC/USDT, Sonic USDT=${sonicPriceUSDCperUSDT.toFixed(6)} USDC/USDT, Diff=${percentageDiff.toFixed(4)}%`);
+
+      // Determine arbitrage direction for USDC-targeted arbitrage
+      buyChain = avalanchePriceUSDCperUSDT < sonicPriceUSDCperUSDT ? 'avalanche' : 'sonic';
+      sellChain = avalanchePriceUSDCperUSDT < sonicPriceUSDCperUSDT ? 'sonic' : 'avalanche';
+      buyPriceUSDCperUSDT = Math.min(avalanchePriceUSDCperUSDT, sonicPriceUSDCperUSDT);
+      sellPriceUSDCperUSDT = Math.max(avalanchePriceUSDCperUSDT, sonicPriceUSDCperUSDT);
+
       log(`🎯 Checking USDC-targeted arbitrage (we're running low on USDT, so we'll use USDC to buy USDT)`);
       await checkUSDCTargetedArbitrage(buyChain, sellChain, buyPriceUSDCperUSDT, sellPriceUSDCperUSDT, totalGasUSD);
     } else {
+      // When targeting USDC, we're doing USDT-targeted arbitrage
+      // Use the correct price direction based on each chain's token index
+      const avalanchePriceUSDTperUSDC = avalancheTargetIndex === 0 ? avalanchePrice.tokens0PerToken1 : avalanchePrice.tokens1PerToken0;
+      const sonicPriceUSDTperUSDC = sonicTargetIndex === 0 ? sonicPrice.tokens0PerToken1 : sonicPrice.tokens1PerToken0;
+
+      priceDiff = Math.abs(avalanchePriceUSDTperUSDC - sonicPriceUSDTperUSDC);
+      percentageDiff = (priceDiff / Math.min(avalanchePriceUSDTperUSDC, sonicPriceUSDTperUSDC)) * 100;
+      log(`Price comparison: Avalanche USDC=${avalanchePriceUSDTperUSDC.toFixed(6)} USDT/USDC, Sonic USDC=${sonicPriceUSDTperUSDC.toFixed(6)} USDT/USDC, Diff=${percentageDiff.toFixed(4)}%`);
+
+      // Determine arbitrage direction for USDT-targeted arbitrage
+      buyChain = avalanchePriceUSDTperUSDC < sonicPriceUSDTperUSDC ? 'avalanche' : 'sonic';
+      sellChain = avalanchePriceUSDTperUSDC < sonicPriceUSDTperUSDC ? 'sonic' : 'avalanche';
+      buyPriceUSDCperUSDT = Math.min(avalanchePriceUSDTperUSDC, sonicPriceUSDTperUSDC);
+      sellPriceUSDCperUSDT = Math.max(avalanchePriceUSDTperUSDC, sonicPriceUSDTperUSDC);
+
       log(`🎯 Checking USDT-targeted arbitrage (we're running low on USDC, so we'll use USDT to buy USDC)`);
       await checkUSDTTargetedArbitrage(buyChain, sellChain, buyPriceUSDCperUSDT, sellPriceUSDCperUSDT, totalGasUSD);
     }
@@ -458,31 +498,6 @@ function determineTargetToken(poolMetadata: Record<string, PoolMetadata>): 'USDC
   } else {
     log(`🎯 Target token determined: USDT (${totalUSDT.toFixed(2)} vs ${totalUSDC.toFixed(2)} USDC)`);
     return 'USDT';
-  }
-}
-
-// Get pool prices for the target token (the one we're running low on)
-async function getTargetTokenPrices(): Promise<void> {
-  let targetToken: string = '';
-
-  try {
-    // Get pool metadata first
-    const poolMetadata = await getAllPoolMetadata();
-
-    // Determine target token based on pool metadata
-    targetToken = determineTargetToken(poolMetadata);
-
-    // Pool addresses
-    const PHARAOH_POOL_AVALANCHE = '0x184b487c7e811f1d9734d49e78293e00b3768079';
-    const SHADOW_POOL_SONIC = '0x9053fe060f412ad5677f934f89e07524343ee8e7';
-
-    // Get pool prices targeting the token we're running low on
-    await getPharaohPoolPrice(clients.avalanche, 'avalanche', PHARAOH_POOL_AVALANCHE, targetToken, poolMetadata);
-    await getShadowPoolPrice(clients.sonic, 'sonic', SHADOW_POOL_SONIC, targetToken, poolMetadata);
-
-    log(`✅ Completed ${targetToken} price collection`);
-  } catch (error) {
-    log(`Failed to get ${targetToken || 'target token'} prices: ${error}`, 'error');
   }
 }
 
@@ -597,9 +612,6 @@ export async function monitorPrices(): Promise<void> {
 
   while (true) {
     try {
-      // Determine which token we're running low on and get its prices
-      await getTargetTokenPrices();
-
       // Get all chain data (including gas costs)
       await getAllChainData('avalanche');
       await getAllChainData('sonic');
@@ -607,7 +619,7 @@ export async function monitorPrices(): Promise<void> {
       // Calculate total arbitrage gas cost
       const totalGasCost = calculateTotalArbitrageGasCost();
 
-      // Check for arbitrage opportunities
+      // Check for arbitrage opportunities (this will fetch pool prices and check opportunities)
       await checkArbitrageOpportunities();
 
       log('Completed price monitoring cycle');

@@ -242,21 +242,18 @@ export async function getPharaohPoolPrice(
   chainName: string,
   poolAddress: string,
   targetToken: string,
+  targetTokenIndex: number,
   poolMetadata: Record<string, PoolMetadata>
 ): Promise<void> {
   try {
     // Pharaoh.exchange CL pool price fetching logic
-    log(`Fetching Pharaoh pool price for ${chainName} at ${poolAddress} (targeting ${targetToken})`);
+    log(`Fetching Pharaoh pool price for ${chainName} at ${poolAddress} (targeting ${targetToken} as token${targetTokenIndex})`);
 
     // Get the pool metadata for this chain
     const metadata = poolMetadata[chainName];
     if (!metadata) {
       throw new Error(`No pool metadata found for ${chainName}`);
     }
-
-    // Determine which index the target token is in this pool
-    const targetTokenIndex = metadata.token0.symbol.toLowerCase() === targetToken.toLowerCase() ? 0 : 1;
-    log(`📍 ${targetToken} is token${targetTokenIndex} in ${chainName} pool`);
 
     // Implementation using Uniswap V3 ABI
     const poolContract = getContract({ address: poolAddress as `0x${string}`, abi: POOL_ABI, client });
@@ -275,10 +272,11 @@ export async function getPharaohPoolPrice(
       timestamp: Date.now()
     };
 
+    // Use the correct price based on target token index
     const targetTokenPrice = targetTokenIndex === 1 ? tokens0PerToken1 : tokens1PerToken0;
-
     const quoteTokenSymbol = targetTokenIndex === 1 ? metadata.token0.symbol : metadata.token1.symbol;
     const targetTokenSymbol = targetTokenIndex === 1 ? metadata.token1.symbol : metadata.token0.symbol;
+
     log(`${chainName} Pharaoh pool price: ${targetTokenPrice.toFixed(6)} ${quoteTokenSymbol}s per ${targetTokenSymbol}`);
 
   } catch (error) {
@@ -291,21 +289,18 @@ export async function getShadowPoolPrice(
   chainName: string,
   poolAddress: string,
   targetToken: string,
+  targetTokenIndex: number,
   poolMetadata: Record<string, PoolMetadata>
 ): Promise<void> {
   try {
     // Shadow CL pool price fetching logic
-    log(`Fetching Shadow pool price for ${chainName} at ${poolAddress} (targeting ${targetToken})`);
+    log(`Fetching Shadow pool price for ${chainName} at ${poolAddress} (targeting ${targetToken} as token${targetTokenIndex})`);
 
     // Get the pool metadata for this chain
     const metadata = poolMetadata[chainName];
     if (!metadata) {
       throw new Error(`No pool metadata found for ${chainName}`);
     }
-
-    // Determine which index the target token is in this pool
-    const targetTokenIndex = metadata.token0.symbol.toLowerCase() === targetToken.toLowerCase() ? 0 : 1;
-    log(`📍 ${targetToken} is token${targetTokenIndex} in ${chainName} pool`);
 
     // Implementation using Uniswap V3 ABI
     const poolContract = getContract({ address: poolAddress as `0x${string}`, abi: POOL_ABI, client });
@@ -324,10 +319,11 @@ export async function getShadowPoolPrice(
       timestamp: Date.now()
     };
 
+    // Use the correct price based on target token index
     const targetTokenPrice = targetTokenIndex === 1 ? tokens0PerToken1 : tokens1PerToken0;
-
     const quoteTokenSymbol = targetTokenIndex === 1 ? metadata.token0.symbol : metadata.token1.symbol;
     const targetTokenSymbol = targetTokenIndex === 1 ? metadata.token1.symbol : metadata.token0.symbol;
+
     log(`${chainName} Shadow pool price: ${targetTokenPrice.toFixed(6)} ${quoteTokenSymbol}s per ${targetTokenSymbol}`);
 
   } catch (error) {
@@ -363,26 +359,6 @@ export async function getAllChainData(chainName: string): Promise<void> {
     log(`Completed data collection for ${chainName}`);
   } catch (error) {
     log(`Failed to get all data for ${chainName}: ${error}`, 'error');
-  }
-}
-
-// Get all pool prices
-export async function getAllPoolPrices(): Promise<void> {
-  try {
-    // Pool addresses
-    const PHARAOH_POOL_AVALANCHE = '0x184b487c7e811f1d9734d49e78293e00b3768079';
-    const SHADOW_POOL_SONIC = '0x9053fe060f412ad5677f934f89e07524343ee8e7';
-
-    // Get pool metadata first
-    const poolMetadata = await getAllPoolMetadata();
-
-    // Get pool prices for USDC/USDT pairs
-    await getPharaohPoolPrice(clients.avalanche, 'avalanche', PHARAOH_POOL_AVALANCHE, 'USDT', poolMetadata);
-    await getShadowPoolPrice(clients.sonic, 'sonic', SHADOW_POOL_SONIC, 'USDT', poolMetadata);
-
-    log('Completed pool price collection');
-  } catch (error) {
-    log(`Failed to get all pool prices: ${error}`, 'error');
   }
 }
 
