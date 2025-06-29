@@ -7,8 +7,7 @@ import {
   getAllChainData,
   calculateTotalArbitrageGasCost,
   getGasCostInUSD,
-  getPharaohPoolPrice,
-  getShadowPoolPrice,
+  getPoolPrice,
   getAllPoolMetadata,
   type PoolMetadata
 } from './getters';
@@ -365,8 +364,8 @@ async function checkArbitrageOpportunities(): Promise<void> {
     log(`📍 ${targetToken} is token${avalancheTargetIndex} in avalanche pool, token${sonicTargetIndex} in sonic pool`);
 
     // Get pool prices targeting the token we're running low on
-    await getPharaohPoolPrice(clients.avalanche, 'avalanche', poolMetadata['avalanche'].address, targetToken, avalancheTargetIndex, poolMetadata);
-    await getShadowPoolPrice(clients.sonic, 'sonic', poolMetadata['sonic'].address, targetToken, sonicTargetIndex, poolMetadata);
+    await getPoolPrice(clients.avalanche, 'avalanche', avalancheTargetIndex, poolMetadata);
+    await getPoolPrice(clients.sonic, 'sonic', sonicTargetIndex, poolMetadata);
 
     const avalanchePrice = lastPrices['avalanche'];
     const sonicPrice = lastPrices['sonic'];

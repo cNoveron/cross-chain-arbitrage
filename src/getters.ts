@@ -237,73 +237,26 @@ export async function getGasCostInUSD(chain: string): Promise<number> {
 }
 
 // Price monitoring functions for CL pools
-export async function getPharaohPoolPrice(
+export async function getPoolPrice(
   client: PublicClient,
   chainName: string,
-  poolAddress: string,
-  targetToken: string,
   targetTokenIndex: number,
-  poolMetadata: Record<string, PoolMetadata>
+  pools: Record<string, PoolMetadata>
 ): Promise<void> {
-  try {
-    // Pharaoh.exchange CL pool price fetching logic
-    log(`Fetching Pharaoh pool price for ${chainName} at ${poolAddress} (targeting ${targetToken} as token${targetTokenIndex})`);
-
-    // Get the pool metadata for this chain
-    const metadata = poolMetadata[chainName];
-    if (!metadata) {
-      throw new Error(`No pool metadata found for ${chainName}`);
-    }
-
-    // Implementation using Uniswap V3 ABI
-    const poolContract = getContract({ address: poolAddress as `0x${string}`, abi: POOL_ABI, client });
-
-    // Get slot0 data
-    const slot0Data = await poolContract.read.slot0();
-
-    // Calculate price from sqrtPriceX96 (price of token1 in terms of token0)
-    const sqrtPriceX96 = slot0Data[0];
-    const price = calculatePriceFromSqrtPriceX96(sqrtPriceX96, metadata.token0.decimals, metadata.token1.decimals);
-
-    // Store the prices
-    const { tokens0PerToken1, tokens1PerToken0 } = lastPrices[chainName] = {
-      tokens0PerToken1: 1 / Number(price), // tokens0 per token1 (USDCs per USDT, the ticker being: USDT/USDC)
-      tokens1PerToken0: Number(price),     // tokens1 per token0 (USDTs per USDC, the ticker being: USDC/USDT)
-      timestamp: Date.now()
-    };
-
-    // Use the correct price based on target token index
-    const targetTokenPrice = targetTokenIndex === 1 ? tokens0PerToken1 : tokens1PerToken0;
-    const quoteTokenSymbol = targetTokenIndex === 1 ? metadata.token0.symbol : metadata.token1.symbol;
-    const targetTokenSymbol = targetTokenIndex === 1 ? metadata.token1.symbol : metadata.token0.symbol;
-
-    log(`${chainName} Pharaoh pool price: ${targetTokenPrice.toFixed(6)} ${quoteTokenSymbol}s per ${targetTokenSymbol}`);
-
-  } catch (error) {
-    log(`Failed to get ${chainName} Pharaoh pool price: ${error}`, 'error');
+  // Get the pool metadata for this chain
+  const metadata = pools[chainName];
+  if (!metadata) {
+    throw new Error(`No pool metadata found for ${chainName}`);
   }
-}
 
-export async function getShadowPoolPrice(
-  client: PublicClient,
-  chainName: string,
-  poolAddress: string,
-  targetToken: string,
-  targetTokenIndex: number,
-  poolMetadata: Record<string, PoolMetadata>
-): Promise<void> {
+  // CL pool price fetching logic
+  const { symbol } = targetTokenIndex === 0 ? metadata.token0 : metadata.token1
+  log(`Fetching ${metadata.dexName} pool price for ${metadata.chain} at ${metadata.address} (targeting ${symbol} as token${targetTokenIndex})`);
+
+
   try {
-    // Shadow CL pool price fetching logic
-    log(`Fetching Shadow pool price for ${chainName} at ${poolAddress} (targeting ${targetToken} as token${targetTokenIndex})`);
-
-    // Get the pool metadata for this chain
-    const metadata = poolMetadata[chainName];
-    if (!metadata) {
-      throw new Error(`No pool metadata found for ${chainName}`);
-    }
-
     // Implementation using Uniswap V3 ABI
-    const poolContract = getContract({ address: poolAddress as `0x${string}`, abi: POOL_ABI, client });
+    const poolContract = getContract({ address: metadata.address as `0x${string}`, abi: POOL_ABI, client });
 
     // Get slot0 data
     const slot0Data = await poolContract.read.slot0();
@@ -324,10 +277,10 @@ export async function getShadowPoolPrice(
     const quoteTokenSymbol = targetTokenIndex === 1 ? metadata.token0.symbol : metadata.token1.symbol;
     const targetTokenSymbol = targetTokenIndex === 1 ? metadata.token1.symbol : metadata.token0.symbol;
 
-    log(`${chainName} Shadow pool price: ${targetTokenPrice.toFixed(6)} ${quoteTokenSymbol}s per ${targetTokenSymbol}`);
+    log(`${chainName} ${metadata.dexName} pool price: ${targetTokenPrice.toFixed(6)} ${quoteTokenSymbol}s per ${targetTokenSymbol}`);
 
   } catch (error) {
-    log(`Failed to get ${chainName} Shadow pool price: ${error}`, 'error');
+    log(`Failed to get ${chainName} ${metadata.dexName} pool price: ${error}`, 'error');
   }
 }
 
