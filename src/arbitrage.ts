@@ -364,13 +364,9 @@ async function checkArbitrageOpportunities(): Promise<void> {
 
     log(`📍 ${targetToken} is token${avalancheTargetIndex} in avalanche pool, token${sonicTargetIndex} in sonic pool`);
 
-    // Pool addresses
-    const PHARAOH_POOL_AVALANCHE = '0x184b487c7e811f1d9734d49e78293e00b3768079';
-    const SHADOW_POOL_SONIC = '0x9053fe060f412ad5677f934f89e07524343ee8e7';
-
     // Get pool prices targeting the token we're running low on
-    await getPharaohPoolPrice(clients.avalanche, 'avalanche', PHARAOH_POOL_AVALANCHE, targetToken, avalancheTargetIndex, poolMetadata);
-    await getShadowPoolPrice(clients.sonic, 'sonic', SHADOW_POOL_SONIC, targetToken, sonicTargetIndex, poolMetadata);
+    await getPharaohPoolPrice(clients.avalanche, 'avalanche', poolMetadata['avalanche'].address, targetToken, avalancheTargetIndex, poolMetadata);
+    await getShadowPoolPrice(clients.sonic, 'sonic', poolMetadata['sonic'].address, targetToken, sonicTargetIndex, poolMetadata);
 
     const avalanchePrice = lastPrices['avalanche'];
     const sonicPrice = lastPrices['sonic'];
