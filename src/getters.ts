@@ -54,7 +54,7 @@ const CACHE_DURATION = 30000; // 30 seconds
 
 // Pool metadata structure
 export interface PoolMetadata {
-  name: string;
+  dexName: string;
   chain: string;
   address: string;
   token0: {
@@ -365,8 +365,8 @@ export async function getAllChainData(chainName: string): Promise<void> {
 // Get pool metadata (token addresses, symbols, decimals)
 export async function getPoolMetadata(
   client: PublicClient,
-  poolName: string,
   chainName: string,
+  dexName: string,
   poolAddress: string
 ): Promise<PoolMetadata> {
   // Check cache first
@@ -397,7 +397,7 @@ export async function getPoolMetadata(
     ]);
 
     const metadata: PoolMetadata = {
-      name: poolName,
+      dexName,
       chain: chainName,
       address: poolAddress,
       token0: {
@@ -415,12 +415,12 @@ export async function getPoolMetadata(
     // Cache the result
     poolMetadataCache[cacheKey] = metadata;
 
-    log(`📋 Pool metadata for ${poolName}: ${token0Symbol} (${token0Address}) / ${token1Symbol} (${token1Address})`);
+    log(`📋 Pool metadata for ${dexName}: ${token0Symbol} (${token0Address}) / ${token1Symbol} (${token1Address})`);
 
     return metadata;
 
   } catch (error) {
-    log(`Failed to get pool metadata for ${poolName}: ${error}`, 'error');
+    log(`Failed to get pool metadata for ${dexName}: ${error}`, 'error');
     throw error;
   }
 }
