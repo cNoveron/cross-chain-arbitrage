@@ -35,8 +35,8 @@ export interface PaperTrade {
 
 // Paper trading state
 export const paperBalances: Record<string, TokenBalance> = {
-  avalanche: { usdc: 10000, usdt: 0, timestamp: Date.now() }, // Start with 10k USDC
-  sonic: { usdc: 10000, usdt: 0, timestamp: Date.now() },     // Start with 10k USDC
+  avalanche: { usdc: 50000, usdt: 50000, timestamp: Date.now() }, // Start with 5k USDC and 5k USDT
+  sonic: { usdc: 50000, usdt: 50000, timestamp: Date.now() },     // Start with 5k USDC and 5k USDT
 };
 
 export const paperTrades: PaperTrade[] = [];
@@ -236,12 +236,12 @@ export async function executeUSDCTargetedArbitrage(
 export async function executeUSDTTargetedArbitrage(
   buyChain: string,
   sellChain: string,
-  buyPriceUSDCperUSDT: number,
-  sellPriceUSDCperUSDT: number,
+  buyPriceUSDTperUSDC: number,
+  sellPriceUSDTperUSDC: number,
   tradeAmountUSDT: number
 ): Promise<void> {
   try {
-    log(`Executing USDT-targeted arbitrage: Sell USDT on ${buyChain} at ${buyPriceUSDCperUSDT} USDC/USDT, buy on ${sellChain} at ${sellPriceUSDCperUSDT} USDC/USDT (Amount: ${tradeAmountUSDT} USDT)`);
+    log(`Executing USDT-targeted arbitrage: Sell USDT on ${buyChain} at ${buyPriceUSDTperUSDC} USDT/USDC, buy on ${sellChain} at ${sellPriceUSDTperUSDC} USDT/USDC (Amount: ${tradeAmountUSDT} USDT)`);
 
     // Paper trading logic for USDT-targeted arbitrage
     const sourceBalance = getPaperBalance(buyChain);
@@ -264,8 +264,8 @@ export async function executeUSDTTargetedArbitrage(
     // 3. Buy USDT with USDC on sellChain (more expensive price = less USDC per USDT)
     // 4. End with USDT only on sellChain
 
-    const usdcReceived = tradeAmountUSDT * buyPriceUSDCperUSDT; // USDC received from selling USDT
-    const usdtReceived = usdcReceived / sellPriceUSDCperUSDT; // USDT received from buying
+    const usdcReceived = tradeAmountUSDT * buyPriceUSDTperUSDC; // USDC received from selling USDT
+    const usdtReceived = usdcReceived / sellPriceUSDTperUSDC; // USDT received from buying
 
     // Calculate profits in USDT terms
     const grossProfitUSDT = usdtReceived - tradeAmountUSDT;
@@ -295,8 +295,8 @@ export async function executeUSDTTargetedArbitrage(
       addPaperTrade({
         sourceChain: buyChain,
         targetChain: sellChain,
-        sourcePrice: buyPriceUSDCperUSDT,
-        targetPrice: sellPriceUSDCperUSDT,
+        sourcePrice: buyPriceUSDTperUSDC,
+        targetPrice: sellPriceUSDTperUSDC,
         amount: tradeAmountUSDT,
         profit: grossProfitUSDT,
         gasCost: gasCostUSD,
@@ -425,11 +425,11 @@ async function checkArbitrageOpportunities(): Promise<void> {
       // Determine arbitrage direction for USDT-targeted arbitrage
       buyChain = avalanchePriceUSDTperUSDC < sonicPriceUSDTperUSDC ? 'avalanche' : 'sonic';
       sellChain = avalanchePriceUSDTperUSDC < sonicPriceUSDTperUSDC ? 'sonic' : 'avalanche';
-      buyPriceUSDCperUSDT = Math.min(avalanchePriceUSDTperUSDC, sonicPriceUSDTperUSDC);
-      sellPriceUSDCperUSDT = Math.max(avalanchePriceUSDTperUSDC, sonicPriceUSDTperUSDC);
+      const buyPriceUSDTperUSDC = Math.min(avalanchePriceUSDTperUSDC, sonicPriceUSDTperUSDC);
+      const sellPriceUSDTperUSDC = Math.max(avalanchePriceUSDTperUSDC, sonicPriceUSDTperUSDC);
 
       log(`🎯 Checking USDT-targeted arbitrage (we're running low on USDC, so we'll use USDT to buy USDC)`);
-      await checkUSDTTargetedArbitrage(buyChain, sellChain, buyPriceUSDCperUSDT, sellPriceUSDCperUSDT, totalGasUSD);
+      await checkUSDTTargetedArbitrage(buyChain, sellChain, buyPriceUSDTperUSDC, sellPriceUSDTperUSDC, totalGasUSD);
     }
 
     // Log updated balances after arbitrage checks
@@ -496,6 +496,43 @@ function determineTargetToken(poolMetadata: Record<string, PoolMetadata>): 'USDC
   }
 }
 
+// Calculate minimum trade amount needed to achieve required profit
+function calculateMinimumTradeAmount(
+  buyPrice: number,
+  sellPrice: number,
+  totalGasUSD: number,
+  isUSDCTargeted: boolean
+): number {
+  const ATOMIC_UNIT = 0.000001; // 1 atomic unit (6 decimal places)
+  const requiredNetProfit = totalGasUSD + CONFIG.PROFIT_THRESHOLD + ATOMIC_UNIT;
+
+  if (isUSDCTargeted) {
+    // USDC-targeted arbitrage: Start with USDC, end with more USDC
+    // We buy USDT with USDC on buyChain (cheaper price), then sell USDT for USDC on sellChain (more expensive price)
+    // buyPrice and sellPrice are in USDC per USDT
+    // Formula: requiredNetProfit = (tradeAmount / buyPrice * sellPrice) - tradeAmount - totalGasUSD
+    // Solving for tradeAmount: tradeAmount = (requiredNetProfit + totalGasUSD) / ((sellPrice / buyPrice) - 1)
+    const priceRatio = sellPrice / buyPrice;
+    if (priceRatio <= 1) {
+      return 0; // No profit possible
+    }
+    const minTradeAmount = (requiredNetProfit + totalGasUSD) / (priceRatio - 1);
+    return Math.ceil(minTradeAmount * 1000000) / 1000000; // Round up to 6 decimal places
+  } else {
+    // USDT-targeted arbitrage: Start with USDT, end with more USDT
+    // We sell USDT for USDC on buyChain (cheaper price = more USDC per USDT), then buy USDT with USDC on sellChain (more expensive price = less USDC per USDT)
+    // buyPrice and sellPrice are in USDT per USDC
+    // Formula: requiredNetProfit = (tradeAmount * buyPrice / sellPrice) - tradeAmount - totalGasUSD
+    // Solving for tradeAmount: tradeAmount = (requiredNetProfit + totalGasUSD) / ((buyPrice / sellPrice) - 1)
+    const priceRatio = buyPrice / sellPrice;
+    if (priceRatio <= 1) {
+      return 0; // No profit possible
+    }
+    const minTradeAmount = (requiredNetProfit + totalGasUSD) / (priceRatio - 1);
+    return Math.ceil(minTradeAmount * 1000000) / 1000000; // Round up to 6 decimal places
+  }
+}
+
 // Check USDC-targeted arbitrage: Start with USDC, end with more USDC
 async function checkUSDCTargetedArbitrage(
   buyChain: string,
@@ -506,19 +543,27 @@ async function checkUSDCTargetedArbitrage(
 ): Promise<void> {
   const sourceBalance = getPaperBalance(buyChain);
 
-  // Dynamic trade sizing: use up to 50% of available USDC balance
-  const maxTradeAmountUSDC = Math.floor(sourceBalance.usdc * 0.5);
-  const minTradeAmountUSDC = 100; // Minimum trade size to cover gas costs
+  // Calculate minimum trade amount needed to achieve required profit
+  const minTradeAmountUSDC = calculateMinimumTradeAmount(buyPriceUSDCperUSDT, sellPriceUSDCperUSDT, totalGasUSD, true);
 
-  if (maxTradeAmountUSDC < minTradeAmountUSDC) {
-    log(`Insufficient USDC on ${buyChain} for USDC-targeted arbitrage. Available: ${sourceBalance.usdc}, Min required: ${minTradeAmountUSDC}`, 'warn');
+  if (minTradeAmountUSDC === 0) {
+    log(`USDC-targeted arbitrage not profitable: price ratio ${(sellPriceUSDCperUSDT / buyPriceUSDCperUSDT).toFixed(6)} <= 1`, 'warn');
     return;
   }
 
-  // Use the smaller of max trade amount or 1000 USDC (original trade size)
-  const tradeAmountUSDC = Math.min(maxTradeAmountUSDC, 1000);
+  // Dynamic trade sizing: use up to 50% of available USDC balance
+  const maxTradeAmountUSDC = Math.floor(sourceBalance.usdc * 0.5);
+  const absoluteMinTradeAmountUSDC = 100; // Absolute minimum trade size
 
-  log(`USDC trade sizing: Available ${sourceBalance.usdc} USDC, Max 50% = ${maxTradeAmountUSDC} USDC, Using ${tradeAmountUSDC} USDC`);
+  if (maxTradeAmountUSDC < Math.max(minTradeAmountUSDC, absoluteMinTradeAmountUSDC)) {
+    log(`Insufficient USDC on ${buyChain} for USDC-targeted arbitrage. Available: ${sourceBalance.usdc}, Min required: ${Math.max(minTradeAmountUSDC, absoluteMinTradeAmountUSDC).toFixed(6)}`, 'warn');
+    return;
+  }
+
+  // Use the minimum trade amount that achieves required profit, but not more than 50% of balance
+  const tradeAmountUSDC = Math.min(maxTradeAmountUSDC, Math.max(minTradeAmountUSDC, absoluteMinTradeAmountUSDC));
+
+  log(`USDC trade sizing: Available ${sourceBalance.usdc} USDC, Min profitable: ${minTradeAmountUSDC.toFixed(6)} USDC, Max 50%: ${maxTradeAmountUSDC} USDC, Using ${tradeAmountUSDC.toFixed(6)} USDC`);
 
   // USDC-targeted arbitrage logic:
   // 1. Buy USDT with USDC on buyChain (cheaper price)
@@ -532,14 +577,14 @@ async function checkUSDCTargetedArbitrage(
   const grossProfitUSDC = usdcReceived - tradeAmountUSDC;
   const netProfitUSD = grossProfitUSDC - totalGasUSD; // Convert to USD for comparison
 
-  log(`USDC-targeted arbitrage: Start ${tradeAmountUSDC} USDC → End ${usdcReceived.toFixed(4)} USDC = ${grossProfitUSDC.toFixed(4)} USDC profit`);
-  log(`Net profit after gas: $${netProfitUSD.toFixed(4)}, Threshold: $${CONFIG.PROFIT_THRESHOLD} USD`);
+  log(`USDC-targeted arbitrage: Start ${tradeAmountUSDC.toFixed(6)} USDC → End ${usdcReceived.toFixed(6)} USDC = ${grossProfitUSDC.toFixed(6)} USDC profit`);
+  log(`Net profit after gas: $${netProfitUSD.toFixed(6)}, Threshold: $${CONFIG.PROFIT_THRESHOLD} USD`);
 
   if (netProfitUSD > CONFIG.PROFIT_THRESHOLD) {
-    log(`🚨 ARBITRAGE OPPORTUNITY FOUND! ${netProfitUSD.toFixed(4)}% difference`, 'info');
+    log(`🚨 ARBITRAGE OPPORTUNITY FOUND! ${netProfitUSD.toFixed(6)} USD profit`, 'info');
     await executeUSDCTargetedArbitrage(buyChain, sellChain, buyPriceUSDCperUSDT, sellPriceUSDCperUSDT, tradeAmountUSDC);
   } else {
-    log(`USDC-targeted arbitrage not profitable after gas costs (Net: $${netProfitUSD.toFixed(4)}, Threshold: $${CONFIG.PROFIT_THRESHOLD})`, 'warn');
+    log(`USDC-targeted arbitrage not profitable after gas costs (Net: $${netProfitUSD.toFixed(6)}, Threshold: $${CONFIG.PROFIT_THRESHOLD})`, 'warn');
   }
 }
 
@@ -547,25 +592,33 @@ async function checkUSDCTargetedArbitrage(
 async function checkUSDTTargetedArbitrage(
   buyChain: string,
   sellChain: string,
-  buyPriceUSDCperUSDT: number,
-  sellPriceUSDCperUSDT: number,
+  buyPriceUSDTperUSDC: number,
+  sellPriceUSDTperUSDC: number,
   totalGasUSD: number
 ): Promise<void> {
   const sourceBalance = getPaperBalance(buyChain);
 
-  // Dynamic trade sizing: use up to 50% of available USDT balance
-  const maxTradeAmountUSDT = Math.floor(sourceBalance.usdt * 0.5);
-  const minTradeAmountUSDT = 100; // Minimum trade size to cover gas costs
+  // Calculate minimum trade amount needed to achieve required profit
+  const minTradeAmountUSDT = calculateMinimumTradeAmount(buyPriceUSDTperUSDC, sellPriceUSDTperUSDC, totalGasUSD, false);
 
-  if (maxTradeAmountUSDT < minTradeAmountUSDT) {
-    log(`Insufficient USDT on ${buyChain} for USDT-targeted arbitrage. Available: ${sourceBalance.usdt}, Min required: ${minTradeAmountUSDT}`, 'warn');
+  if (minTradeAmountUSDT === 0) {
+    log(`USDT-targeted arbitrage not profitable: price ratio ${(buyPriceUSDTperUSDC / sellPriceUSDTperUSDC).toFixed(6)} <= 1`, 'warn');
     return;
   }
 
-  // Use the smaller of max trade amount or 1000 USDT (original trade size)
-  const tradeAmountUSDT = Math.min(maxTradeAmountUSDT, 1000);
+  // Dynamic trade sizing: use up to 50% of available USDT balance
+  const maxTradeAmountUSDT = Math.floor(sourceBalance.usdt * 0.5);
+  const absoluteMinTradeAmountUSDT = 100; // Absolute minimum trade size
 
-  log(`USDT trade sizing: Available ${sourceBalance.usdt} USDT, Max 50% = ${maxTradeAmountUSDT} USDT, Using ${tradeAmountUSDT} USDT`);
+  if (maxTradeAmountUSDT < Math.max(minTradeAmountUSDT, absoluteMinTradeAmountUSDT)) {
+    log(`Insufficient USDT on ${buyChain} for USDT-targeted arbitrage. Available: ${sourceBalance.usdt}, Min required: ${Math.max(minTradeAmountUSDT, absoluteMinTradeAmountUSDT).toFixed(6)}`, 'warn');
+    return;
+  }
+
+  // Use the minimum trade amount that achieves required profit, but not more than 50% of balance
+  const tradeAmountUSDT = Math.min(maxTradeAmountUSDT, Math.max(minTradeAmountUSDT, absoluteMinTradeAmountUSDT));
+
+  log(`USDT trade sizing: Available ${sourceBalance.usdt} USDT, Min profitable: ${minTradeAmountUSDT.toFixed(6)} USDT, Max 50%: ${maxTradeAmountUSDT} USDT, Using ${tradeAmountUSDT.toFixed(6)} USDT`);
 
   // USDT-targeted arbitrage logic:
   // 1. Sell USDT for USDC on buyChain (cheaper price = more USDC per USDT)
@@ -573,26 +626,21 @@ async function checkUSDTTargetedArbitrage(
   // 3. Buy USDT with USDC on sellChain (more expensive price = less USDC per USDT)
   // 4. End with USDT only on sellChain
 
-  const usdcReceived = tradeAmountUSDT * buyPriceUSDCperUSDT; // USDC received from selling USDT
-  const usdtReceived = usdcReceived / sellPriceUSDCperUSDT; // USDT received from buying
+  const usdcReceived = tradeAmountUSDT * buyPriceUSDTperUSDC; // USDC received from selling USDT
+  const usdtReceived = usdcReceived / sellPriceUSDTperUSDC; // USDT received from buying
 
   // Calculate profits in USDT terms
   const grossProfitUSDT = usdtReceived - tradeAmountUSDT;
-  const [sourceGasUSD, targetGasUSD] = await Promise.all([
-    getGasCostInUSD(buyChain),
-    getGasCostInUSD(sellChain)
-  ]);
-  const gasCostUSD = sourceGasUSD + targetGasUSD;
-  const netProfitUSD = grossProfitUSDT - gasCostUSD;
+  const netProfitUSD = grossProfitUSDT - totalGasUSD;
 
-  log(`USDT-targeted arbitrage: Start ${tradeAmountUSDT} USDT → End ${usdtReceived.toFixed(4)} USDT = ${grossProfitUSDT.toFixed(4)} USDT profit`);
-  log(`Net profit after gas: $${netProfitUSD.toFixed(4)}, Threshold: $${CONFIG.PROFIT_THRESHOLD} USD`);
+  log(`USDT-targeted arbitrage: Start ${tradeAmountUSDT.toFixed(6)} USDT → End ${usdtReceived.toFixed(6)} USDT = ${grossProfitUSDT.toFixed(6)} USDT profit`);
+  log(`Net profit after gas: $${netProfitUSD.toFixed(6)}, Threshold: $${CONFIG.PROFIT_THRESHOLD} USD`);
 
   if (netProfitUSD > CONFIG.PROFIT_THRESHOLD) {
-    log(`🚨 ARBITRAGE OPPORTUNITY FOUND! ${netProfitUSD.toFixed(4)}% difference`, 'info');
-    await executeUSDTTargetedArbitrage(buyChain, sellChain, buyPriceUSDCperUSDT, sellPriceUSDCperUSDT, tradeAmountUSDT);
+    log(`🚨 ARBITRAGE OPPORTUNITY FOUND! ${netProfitUSD.toFixed(6)} USD profit`, 'info');
+    await executeUSDTTargetedArbitrage(buyChain, sellChain, buyPriceUSDTperUSDC, sellPriceUSDTperUSDC, tradeAmountUSDT);
   } else {
-    log(`USDT-targeted arbitrage not profitable after gas costs (Net: $${netProfitUSD.toFixed(4)}, Threshold: $${CONFIG.PROFIT_THRESHOLD})`, 'warn');
+    log(`USDT-targeted arbitrage not profitable after gas costs (Net: $${netProfitUSD.toFixed(6)}, Threshold: $${CONFIG.PROFIT_THRESHOLD})`, 'warn');
   }
 }
 
