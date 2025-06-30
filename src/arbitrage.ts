@@ -496,41 +496,25 @@ function determineTargetToken(poolMetadata: Record<string, PoolMetadata>): 'USDC
   }
 }
 
-// Calculate minimum trade amount needed to achieve required profit
+// Calculate minimum trade amount needed to achieve required profit for USDT-targeted arbitrage
 function calculateMinimumTradeAmount(
   buyPrice: number,
   sellPrice: number,
-  totalGasUSD: number,
-  isUSDCTargeted: boolean
+  totalGasUSD: number
 ): number {
   const ATOMIC_UNIT = 0.000001; // 1 atomic unit (6 decimal places)
   const requiredNetProfit = totalGasUSD + CONFIG.PROFIT_THRESHOLD + ATOMIC_UNIT;
 
-  if (isUSDCTargeted) {
-    // USDC-targeted arbitrage: Start with USDC, end with more USDC
-    // We buy USDT with USDC on buyChain (cheaper price), then sell USDT for USDC on sellChain (more expensive price)
-    // buyPrice and sellPrice are in USDC per USDT
-    // Formula: requiredNetProfit = (tradeAmount / buyPrice * sellPrice) - tradeAmount - totalGasUSD
-    // Solving for tradeAmount: tradeAmount = (requiredNetProfit + totalGasUSD) / ((sellPrice / buyPrice) - 1)
-    const priceRatio = sellPrice / buyPrice;
-    if (priceRatio <= 1) {
-      return 0; // No profit possible
-    }
-    const minTradeAmount = (requiredNetProfit + totalGasUSD) / (priceRatio - 1);
-    return Math.ceil(minTradeAmount * 1000000) / 1000000; // Round up to 6 decimal places
-  } else {
-    // USDT-targeted arbitrage: Start with USDT, end with more USDT
-    // We sell USDT for USDC on buyChain (cheaper price = more USDC per USDT), then buy USDT with USDC on sellChain (more expensive price = less USDC per USDT)
-    // buyPrice and sellPrice are in USDT per USDC
-    // Formula: requiredNetProfit = (tradeAmount * buyPrice / sellPrice) - tradeAmount - totalGasUSD
-    // Solving for tradeAmount: tradeAmount = (requiredNetProfit + totalGasUSD) / ((buyPrice / sellPrice) - 1)
-    const priceRatio = buyPrice / sellPrice;
-    if (priceRatio <= 1) {
-      return 0; // No profit possible
-    }
-    const minTradeAmount = (requiredNetProfit + totalGasUSD) / (priceRatio - 1);
-    return Math.ceil(minTradeAmount * 1000000) / 1000000; // Round up to 6 decimal places
+  // Start with A, end with more A
+  // We buy A for B on buyChain (cheaper price), then sell B for A on sellChain (more expensive price)
+  // Formula: requiredNetProfit = (tradeAmount * buyPrice / sellPrice) - tradeAmount - totalGasUSD
+  // Solving for tradeAmount: tradeAmount = (requiredNetProfit + totalGasUSD) / ((buyPrice / sellPrice) - 1)
+  const priceRatio = sellPrice / buyPrice;
+  if (priceRatio <= 1) {
+    return 0; // No profit possible
   }
+  const minTradeAmount = (requiredNetProfit + totalGasUSD) / (priceRatio - 1);
+  return Math.ceil(minTradeAmount * 1000000) / 1000000; // Round up to 6 decimal places
 }
 
 // Check USDC-targeted arbitrage: Start with USDC, end with more USDC
@@ -544,7 +528,7 @@ async function checkUSDCTargetedArbitrage(
   const sourceBalance = getPaperBalance(buyChain);
 
   // Calculate minimum trade amount needed to achieve required profit
-  const minTradeAmountUSDC = calculateMinimumTradeAmount(buyPriceUSDCperUSDT, sellPriceUSDCperUSDT, totalGasUSD, true);
+  const minTradeAmountUSDC = calculateMinimumTradeAmount(buyPriceUSDCperUSDT, sellPriceUSDCperUSDT, totalGasUSD);
 
   if (minTradeAmountUSDC === 0) {
     log(`USDC-targeted arbitrage not profitable: price ratio ${(sellPriceUSDCperUSDT / buyPriceUSDCperUSDT).toFixed(6)} <= 1`, 'warn');
@@ -599,7 +583,7 @@ async function checkUSDTTargetedArbitrage(
   const sourceBalance = getPaperBalance(buyChain);
 
   // Calculate minimum trade amount needed to achieve required profit
-  const minTradeAmountUSDT = calculateMinimumTradeAmount(buyPriceUSDTperUSDC, sellPriceUSDTperUSDC, totalGasUSD, false);
+  const minTradeAmountUSDT = calculateMinimumTradeAmount(buyPriceUSDTperUSDC, sellPriceUSDTperUSDC, totalGasUSD);
 
   if (minTradeAmountUSDT === 0) {
     log(`USDT-targeted arbitrage not profitable: price ratio ${(buyPriceUSDTperUSDC / sellPriceUSDTperUSDC).toFixed(6)} <= 1`, 'warn');
